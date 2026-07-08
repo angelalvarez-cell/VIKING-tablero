@@ -7,25 +7,52 @@ import { useState, useEffect, useRef, useCallback } from "react";
 const BACKEND_URL = "https://script.google.com/macros/s/AKfycbxf2HT7DtnmkeNjfEToLZF6nY5D7MheSmHfBesC87xM3rGOhra566tCDXfjid6RQrKy2g/exec";
 
 /* ================= Catálogo ================= */
-const GLASS_POSITIONS = [
-  "Parabrisas", "Lateral del. izq.", "Lateral del. der.",
-  "Lateral tras. izq.", "Lateral tras. der.", "Aletas / fijos", "Medallón", "Quemacocos",
-];
+/* Nomenclatura oficial compartida con Autoclave Viking: 10 posiciones, cada una con su clave.
+   El código del vidrio se arma solo: orden + "-" + clave (ej. 1042-LDI). */
+const POS_CODE = {
+  "Parabrisas": "PB",
+  "Lateral del. izq.": "LDI",
+  "Lateral del. der.": "LDD",
+  "Aleta del. izq.": "ALDI",
+  "Aleta del. der.": "ALDD",
+  "Lateral tras. izq.": "LTI",
+  "Lateral tras. der.": "LTD",
+  "Aleta tras. izq.": "ALTI",
+  "Aleta tras. der.": "ALTD",
+  "Medallón": "MED",
+};
+const GLASS_POSITIONS = Object.keys(POS_CODE);
+
+const LAT_DEL = ["Lateral del. izq.", "Lateral del. der."];
+const LAT_TRAS = ["Lateral tras. izq.", "Lateral tras. der."];
+const ALETA_DEL = ["Aleta del. izq.", "Aleta del. der."];
+const ALETA_TRAS = ["Aleta tras. izq.", "Aleta tras. der."];
+
 const GRUPOS = {
-  Delanteros: ["Lateral del. izq.", "Lateral del. der."],
-  Traseros: ["Lateral tras. izq.", "Lateral tras. der.", "Aletas / fijos", "Medallón"],
+  Delanteros: [...LAT_DEL, ...ALETA_DEL],
+  Traseros: [...LAT_TRAS, ...ALETA_TRAS, "Medallón"],
 };
 GRUPOS.Todos = [...GRUPOS.Delanteros, ...GRUPOS.Traseros];
 
 const COBERTURAS = {
-  "2 laterales del.": { pos: GRUPOS.Delanteros, cod: { "Viking": ["VK101"], "Viking Plus": ["VK102"] } },
-  "4 laterales": { pos: ["Lateral del. izq.", "Lateral del. der.", "Lateral tras. izq.", "Lateral tras. der."], cod: { "Viking": ["VK103"], "Viking Plus": ["VK104"] } },
-  "6 laterales": { pos: ["Lateral del. izq.", "Lateral del. der.", "Lateral tras. izq.", "Lateral tras. der.", "Aletas / fijos"], cod: { "Viking": ["VK105"], "Viking Plus": ["VK106"] } },
+  "2 laterales del.": { pos: [...LAT_DEL], cod: { "Viking": ["VK101"], "Viking Plus": ["VK102"] } },
+  "4 laterales": { pos: [...LAT_DEL, ...LAT_TRAS], cod: { "Viking": ["VK103"], "Viking Plus": ["VK104"] } },
+  "6 laterales": { pos: [...LAT_DEL, ...LAT_TRAS, ...ALETA_DEL], cod: { "Viking": ["VK105"], "Viking Plus": ["VK106"] } },
   "Medallón": { pos: ["Medallón"], cod: { "Viking": ["VK107"], "Viking Plus": ["VK108"] } },
   "Parabrisas": { pos: ["Parabrisas"], cod: { "Viking": ["VK110"], "Viking Plus": ["VK110"] } },
-  "Cristales completos": { pos: ["Parabrisas", "Lateral del. izq.", "Lateral del. der.", "Lateral tras. izq.", "Lateral tras. der.", "Aletas / fijos", "Medallón"], cod: { "Viking Plus": ["VK106", "VK108", "VK110"] }, soloPlus: true },
+  "Cristales completos": { pos: ["Parabrisas", ...LAT_DEL, ...LAT_TRAS, ...ALETA_DEL, "Medallón"], cod: { "Viking Plus": ["VK106", "VK108", "VK110"] }, soloPlus: true },
 };
 const KEVLAR_ZONES = ["Puertas del.", "Puertas tras.", "Poste A", "Poste B", "Poste C", "Poste D", "Costados", "Cajuela / 5ª puerta", "Área de carga"];
+
+/* Orden del vidrio sin prefijo (VK-1042 → 1042) + clave, para igualar al código de Autoclave Viking. */
+const ordenCorta = (orden) => String(orden || "").replace(/^VK[-\s]?/i, "").trim();
+const codigoVidrio = (orden, pos) => (POS_CODE[pos] ? ordenCorta(orden) + "-" + POS_CODE[pos] : null);
+/* Vidrios tratados en orden oficial + cualquier clave heredada al final (no perder datos viejos). */
+const vidriosDe = (a) => {
+  const conocidos = GLASS_POSITIONS.filter((p) => a.glass[p]);
+  const extra = Object.keys(a.glass || {}).filter((p) => !POS_CODE[p]);
+  return [...conocidos, ...extra];
+};
 
 
 // Base de vehículos — IDÉNTICA al Cotizador Viking (objeto BRANDS).
@@ -117,9 +144,9 @@ const AUTOS_DEMO = [
     id: 1, tipo: "Nuevo", marca: "Toyota", modelo: "Land Cruiser", tipoVeh: "SUV", anio: 2025, placa: "LZR-77-40", orden: "VK-1042",
     cliente: "A. Fuentes", bahia: "B1", entregaFecha: "2026-07-10", entregaHora: "18:00", nivel: "Viking Plus",
     paquete: { label: "Protección integral", codigos: ["VK106", "VK108", "VK110", "VK130×4", "VK132"] },
-    glass: { "Parabrisas": "Viking Plus", "Lateral del. izq.": "Viking Plus", "Lateral del. der.": "Viking Plus", "Lateral tras. izq.": "Viking Plus", "Lateral tras. der.": "Viking Plus", "Aletas / fijos": "Viking Plus", "Medallón": "Viking Plus" },
-    ahumado: { "Lateral tras. izq.": true, "Lateral tras. der.": true, "Aletas / fijos": true, "Medallón": true },
-    kevlar: ["Puertas del.", "Puertas tras.", "Poste B", "Poste C", "Cajuela / 5ª puerta"], kevlarHito: 2, modeloNuevo: true,
+    glass: { "Parabrisas": "Viking Plus", "Lateral del. izq.": "Viking Plus", "Lateral del. der.": "Viking Plus", "Lateral tras. izq.": "Viking Plus", "Lateral tras. der.": "Viking Plus", "Aleta tras. izq.": "Viking Plus", "Aleta tras. der.": "Viking Plus", "Medallón": "Viking Plus" },
+    ahumado: { "Lateral tras. izq.": true, "Lateral tras. der.": true, "Aleta tras. izq.": true, "Aleta tras. der.": true, "Medallón": true },
+    kevlar: ["Puertas del.", "Puertas tras.", "Poste B", "Poste C", "Cajuela / 5ª puerta"], kevlarHito: 2, vidriosNuevo: true, kevlarNuevo: false,
     hito: 5, crew: ["Vidrios 1", "Vidrios 2"], motivo: "", notas: "Faltan 2 laterales por montar.",
   },
   {
@@ -128,22 +155,22 @@ const AUTOS_DEMO = [
     paquete: { label: "4 laterales", codigos: ["VK104"] },
     glass: { "Lateral del. izq.": "Viking Plus", "Lateral del. der.": "Viking Plus", "Lateral tras. izq.": "Viking Plus", "Lateral tras. der.": "Viking Plus" },
     ahumado: { "Lateral del. izq.": true, "Lateral del. der.": true },
-    kevlar: [], kevlarHito: 0, modeloNuevo: true, hito: 4, crew: ["Líder de Taller"], motivo: "", notas: "Sin marco — cuidado con sensores.",
+    kevlar: [], kevlarHito: 0, vidriosNuevo: true, kevlarNuevo: false, hito: 4, crew: ["Líder de Taller"], motivo: "", notas: "Sin marco — cuidado con sensores.",
   },
   {
     id: 3, tipo: "Garantía", marca: "Land Rover", modelo: "Range Rover Sport", tipoVeh: "SUV", anio: 2023, placa: "KTM-55-08", orden: "VK-0977",
     cliente: "M. Ibarra", bahia: "B3", entregaFecha: "2026-07-09", entregaHora: "18:00", nivel: "Viking Plus",
     paquete: { label: "Garantía", codigos: [] },
     glass: { "Lateral tras. izq.": "Viking Plus" }, ahumado: {},
-    kevlar: [], kevlarHito: 0, modeloNuevo: false, hito: 1, crew: ["Kevlar", "Asistente"],
+    kevlar: [], kevlarHito: 0, vidriosNuevo: false, kevlarNuevo: false, hito: 1, crew: ["Kevlar", "Asistente"],
     motivo: "Delaminación en lateral tras. izq. — deslaminar y rehacer", notas: "Vidrio en base de datos, sin escaneo.",
   },
   {
     id: 4, tipo: "Nuevo", marca: "Chevrolet", modelo: "Suburban", tipoVeh: "SUV", anio: 2023, placa: "JGH-42-15", orden: "VK-1045",
     cliente: "R. Delgado", bahia: "B4", entregaFecha: "2026-07-16", entregaHora: "18:00", nivel: "Viking Plus",
     paquete: { label: "Cristales completos + Kevlar", codigos: ["VK106", "VK108", "VK110", "VK130×4"] },
-    glass: { "Parabrisas": "Viking Plus", "Lateral del. izq.": "Viking Plus", "Lateral del. der.": "Viking Plus", "Lateral tras. izq.": "Viking Plus", "Lateral tras. der.": "Viking Plus", "Aletas / fijos": "Viking Plus", "Medallón": "Viking Plus" },
-    ahumado: {}, kevlar: ["Puertas del.", "Puertas tras."], kevlarHito: 1, modeloNuevo: false,
+    glass: { "Parabrisas": "Viking Plus", "Lateral del. izq.": "Viking Plus", "Lateral del. der.": "Viking Plus", "Lateral tras. izq.": "Viking Plus", "Lateral tras. der.": "Viking Plus", "Aleta tras. izq.": "Viking Plus", "Aleta tras. der.": "Viking Plus", "Medallón": "Viking Plus" },
+    ahumado: {}, kevlar: ["Puertas del.", "Puertas tras."], kevlarHito: 1, vidriosNuevo: false, kevlarNuevo: true,
     hito: 2, crew: ["Técnico Digital"], motivo: "", notas: "Moldes de Kevlar en base — corte directo CNC.",
   },
 ];
@@ -180,11 +207,13 @@ function resumenAhumado(a) {
    ~2.8/semana (doc de Capacidad). La fecha suma la carga de los autos adelante en la fila. */
 const CAP_SEMANA = 2.8;
 function pesoTotal(a) {
-  const nVidrios = GLASS_POSITIONS.filter((p) => a.glass[p]).length;
+  const nVidrios = Object.keys(a.glass || {}).length;
   let w = 0.4 + 0.15 * nVidrios;                 // 4 laterales ≈ 1.0 (auto estándar)
   if (a.glass["Parabrisas"]) w += 0.25;          // el parabrisas ocupa su propio ciclo de autoclave
-  w += 0.05 * ((a.kevlar && a.kevlar.length) || 0); // Kevlar corre en paralelo: pesa poco al cuello
-  if (a.modeloNuevo) w += 1.3;                   // primera vez del modelo: gran carga del Técnico Digital
+  const nKevlar = (a.kevlar && a.kevlar.length) || 0;
+  w += 0.05 * nKevlar;                           // Kevlar corre en paralelo: pesa poco al cuello
+  if (a.vidriosNuevo) w += 1.3;                  // primera vez de los vidrios: gran carga del Técnico Digital
+  if (a.kevlarNuevo && nKevlar > 0) w += 0.6;    // primera vez del Kevlar: plantillas + AutoCAD (aparte)
   return w;
 }
 function pesoRestante(a) {
@@ -424,12 +453,14 @@ function Banda({ auto, ultimo }) {
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px 40px" }}>
             <div>
               <div style={{ fontSize: 10, letterSpacing: "0.16em", color: T.dim, textTransform: "uppercase", marginBottom: 8 }}>Vidrios</div>
-              {GLASS_POSITIONS.filter((p) => auto.glass[p]).map((p) => {
+              {vidriosDe(auto).map((p) => {
                 const plus = auto.glass[p] === "Viking Plus";
+                const cod = codigoVidrio(auto.orden, p);
                 return (
                   <div key={p} style={{ display: "flex", alignItems: "baseline", gap: 10, padding: "3px 0" }}>
                     <span style={{ width: 6, height: 6, borderRadius: "50%", background: plus ? T.gold : T.blue, flexShrink: 0, transform: "translateY(-1px)" }} />
-                    <span style={{ fontSize: 13.5, color: T.ink, minWidth: 128 }}>{p}</span>
+                    {cod && <span className="tnum" style={{ fontSize: 13, fontWeight: 700, letterSpacing: "0.03em", color: T.ink, minWidth: 84 }}>{cod}</span>}
+                    <span style={{ fontSize: 12.5, color: T.mut, minWidth: 118 }}>{p}</span>
                     <span style={{ fontSize: 13, fontWeight: 600, color: plus ? T.gold : T.blue }}>{auto.glass[p]}</span>
                     {auto.ahumado[p] && <span style={{ fontSize: 11, letterSpacing: "0.08em", textTransform: "uppercase", color: T.mut, border: `1px solid ${T.line2}`, borderRadius: 4, padding: "1px 6px" }}>ahumado</span>}
                   </div>
@@ -646,12 +677,18 @@ function Panel({ autos, setAutos, recargar }) {
     if (a.id !== id || !a.glass[q]) return a;
     const ah = { ...a.ahumado }; ah[q] ? delete ah[q] : (ah[q] = true); return { ...a, ahumado: ah };
   }));
+  const tglGlass = (id, pos) => setAutos((p) => p.map((a) => {
+    if (a.id !== id) return a;
+    const g = { ...a.glass }, ah = { ...a.ahumado };
+    if (g[pos]) { delete g[pos]; delete ah[pos]; } else { g[pos] = a.nivel; }
+    return { ...a, glass: g, ahumado: ah, paquete: { ...a.paquete, label: "Personalizado" } };
+  }));
   const tgl = (id, campo, v) => setAutos((p) => p.map((a) => (a.id === id ? { ...a, [campo]: a[campo].includes(v) ? a[campo].filter((x) => x !== v) : [...a[campo], v] } : a)));
 
   const agregar = () => {
     const nid = Date.now(); // id único: nunca choca con otro auto (evita sobrescribir)
     setNuevoId(nid);
-    setAutos((p) => [{ id: nid, tipo: "Nuevo", marca: "", modelo: "", tipoVeh: "", anio: 2026, placa: "", orden: "VK-", cliente: "", bahia: "", entregaFecha: "2026-07-20", entregaHora: "18:00", nivel: "Viking Plus", paquete: { label: "Sin paquete", codigos: [] }, glass: {}, ahumado: {}, kevlar: [], kevlarHito: 0, modeloNuevo: true, hito: 0, crew: [], motivo: "", notas: "" }, ...p]);
+    setAutos((p) => [{ id: nid, tipo: "Nuevo", marca: "", modelo: "", tipoVeh: "", anio: 2026, placa: "", orden: "VK-", cliente: "", bahia: "", entregaFecha: "2026-07-20", entregaHora: "18:00", nivel: "Viking Plus", paquete: { label: "Sin paquete", codigos: [] }, glass: {}, ahumado: {}, kevlar: [], kevlarHito: 0, vidriosNuevo: true, kevlarNuevo: false, hito: 0, crew: [], motivo: "", notas: "" }, ...p]);
     if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
@@ -710,11 +747,20 @@ function Panel({ autos, setAutos, recargar }) {
                 <Campo label="Placa"><input style={S.inp} value={a.placa} onChange={(e) => upd(a.id, "placa", e.target.value)} /></Campo>
                 <Campo label="Bahía"><input style={S.inp} value={a.bahia} onChange={(e) => upd(a.id, "bahia", e.target.value)} placeholder="B1" /></Campo>
               </div>
-              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
-                <Lbl>Modelo</Lbl>
-                <button onClick={() => upd(a.id, "modeloNuevo", true)} style={S.chip(a.modeloNuevo)}>Primera vez</button>
-                <button onClick={() => upd(a.id, "modeloNuevo", false)} style={S.chip(!a.modeloNuevo)}>Repetido</button>
-                <span style={{ fontSize: 11.5, color: T.mut }}>La primera vez de un modelo ≈ +20 h de trabajo digital (afecta la fecha sugerida)</span>
+              <div style={{ display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap", marginBottom: 12 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <Lbl>Vidrios</Lbl>
+                  <button onClick={() => upd(a.id, "vidriosNuevo", true)} style={S.chip(a.vidriosNuevo)}>Primera vez</button>
+                  <button onClick={() => upd(a.id, "vidriosNuevo", false)} style={S.chip(!a.vidriosNuevo)}>Repetido</button>
+                </div>
+                {a.kevlar.length > 0 && (
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <Lbl>Kevlar</Lbl>
+                    <button onClick={() => upd(a.id, "kevlarNuevo", true)} style={S.chip(a.kevlarNuevo)}>Primera vez</button>
+                    <button onClick={() => upd(a.id, "kevlarNuevo", false)} style={S.chip(!a.kevlarNuevo)}>Repetido</button>
+                  </div>
+                )}
+                <span style={{ fontSize: 11.5, color: T.mut }}>"Primera vez" del modelo suma trabajo (escaneo/patrón, plantillas) y aleja la fecha sugerida</span>
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1.4fr 1fr .8fr", gap: 10, marginBottom: 8 }}>
                 <Campo label="Orden"><input style={S.inp} value={a.orden} onChange={(e) => upd(a.id, "orden", e.target.value)} /></Campo>
@@ -749,6 +795,14 @@ function Panel({ autos, setAutos, recargar }) {
                       {Object.keys(COBERTURAS).map((n) => <button key={n} onClick={() => aplicarCob(a.id, n)} style={S.pkg}>{n}</button>)}
                       <button onClick={() => integral(a.id)} style={{ ...S.pkg, borderColor: T.goldSoft, color: T.gold }}>★ Protección integral</button>
                     </div>
+                    <Lbl style={{ margin: "14px 0 6px", display: "block" }}>Vidrios — selección individual (incluye aletas)</Lbl>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                      {GLASS_POSITIONS.map((q) => (
+                        <button key={q} onClick={() => tglGlass(a.id, q)} style={S.chip(!!a.glass[q])} title={q}>
+                          <span className="tnum" style={{ fontWeight: 700 }}>{POS_CODE[q]}</span> <span style={{ opacity: 0.75 }}>{q}</span>
+                        </button>
+                      ))}
+                    </div>
                   </div>
                   <div style={{ marginBottom: 12 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 7 }}>
@@ -757,7 +811,7 @@ function Panel({ autos, setAutos, recargar }) {
                       <span style={{ fontSize: 11.5, color: T.mut }}>{resumenAhumado(a)}</span>
                     </div>
                     <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                      {GLASS_POSITIONS.filter((q) => a.glass[q]).map((q) => <button key={q} onClick={() => ahuPos(a.id, q)} style={S.chip(!!a.ahumado[q])}>{q}{q === "Parabrisas" ? " ⚠" : ""}</button>)}
+                      {vidriosDe(a).map((q) => <button key={q} onClick={() => ahuPos(a.id, q)} style={S.chip(!!a.ahumado[q])}>{q}{q === "Parabrisas" ? " ⚠" : ""}</button>)}
                     </div>
                   </div>
                   <div style={{ marginBottom: 12 }}>
