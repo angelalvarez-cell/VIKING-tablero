@@ -177,18 +177,24 @@ const AUTOS_DEMO = [
 
 /* ================= Utilidades ================= */
 const hoy = new Date();
-const diasPara = (f) => Math.ceil((new Date(f + "T18:00:00") - hoy) / 86400000);
+function aFecha(f) {
+  if (!f) return null;
+  const s = String(f).trim();
+  const d = /^\d{4}-\d{2}-\d{2}$/.test(s) ? new Date(s + "T12:00:00") : new Date(s);
+  return isNaN(d.getTime()) ? null : d;
+}
+const diasPara = (f) => { const d = aFecha(f); if (!d) return null; const t = new Date(d); t.setHours(18, 0, 0, 0); return Math.ceil((t - hoy) / 86400000); };
 const kevlarListo = (a) => a.kevlar.length === 0 || a.kevlarHito >= 3;
 const entregado = (a) => a.hito >= HITOS.length - 1 && kevlarListo(a);
-function urgencia(a) { if (entregado(a)) return "listo"; const d = diasPara(a.entregaFecha); if (d <= 1) return "urgente"; if (d <= 3) return "proximo"; return "enTiempo"; }
+function urgencia(a) { if (entregado(a)) return "listo"; const d = diasPara(a.entregaFecha); if (d === null) return "enTiempo"; if (d <= 1) return "urgente"; if (d <= 3) return "proximo"; return "enTiempo"; }
 const URG = {
   urgente:  { label: "Urgente",   c: "#e07a7a" },
   proximo:  { label: "Próximo",   c: "#c99b4a" },
   enTiempo: { label: "En tiempo", c: "#7da7c4" },
   listo:    { label: "Listo",     c: "#7dbb8d" },
 };
-const fechaCorta = (iso) => new Date(iso + "T00:00:00").toLocaleDateString("es-MX", { weekday: "short", day: "numeric", month: "short" });
-const hora12 = (h) => { if (!h) return ""; const [hh, mm] = h.split(":").map(Number); return (hh % 12 || 12) + ":" + String(mm).padStart(2, "0") + (hh >= 12 ? " pm" : " am"); };
+const fechaCorta = (f) => { const d = aFecha(f); return d ? d.toLocaleDateString("es-MX", { weekday: "short", day: "numeric", month: "short" }) : "—"; };
+const hora12 = (h) => { if (!h) return ""; const m = String(h).match(/(\d{1,2}):(\d{2})/); if (!m) return ""; const hh = Number(m[1]), mm = Number(m[2]); if (isNaN(hh) || isNaN(mm)) return ""; return (hh % 12 || 12) + ":" + String(mm).padStart(2, "0") + (hh >= 12 ? " pm" : " am"); };
 function resumenAhumado(a) {
   const refz = GLASS_POSITIONS.filter((p) => a.glass[p]);
   const ahu = refz.filter((p) => a.ahumado[p]);
@@ -350,7 +356,8 @@ export default function TableroViking() {
 /* ================= Vista TV (output) ================= */
 const ROLES = ["Vendedor", "Técnico Digital", "Vidrios", "Líder", "Kevlar"];
 function VistaTV({ autos }) {
-  const orden = [...autos].filter((a) => !entregado(a)).sort((a, b) => diasPara(a.entregaFecha) - diasPara(b.entregaFecha));
+  const claveOrden = (a) => { const d = diasPara(a.entregaFecha); return d === null ? Infinity : d; };
+  const orden = [...autos].filter((a) => !entregado(a)).sort((a, b) => claveOrden(a) - claveOrden(b));
 
   // Equipo deducido de los hitos: para cada rol, qué autos tiene en sus manos (paso siguiente).
   const cola = {};
@@ -437,9 +444,9 @@ function Banda({ auto, ultimo }) {
             <span style={{ fontSize: 10.5, letterSpacing: "0.2em", textTransform: "uppercase", color: u.c }}>
               <span style={{ display: "inline-block", width: 6, height: 6, borderRadius: "50%", background: u.c, marginRight: 7, verticalAlign: "middle", animation: u.label === "Urgente" ? "breathe 1.6s ease-in-out infinite" : "none" }} />{u.label}
             </span>
-            <span className="tnum" style={{ fontFamily: DISPLAY, fontSize: 42, color: u.c, lineHeight: 1 }}>{entregado(auto) ? "✓" : dias <= 0 ? "HOY" : dias + "d"}</span>
+            <span className="tnum" style={{ fontFamily: DISPLAY, fontSize: 42, color: u.c, lineHeight: 1 }}>{entregado(auto) ? "✓" : dias === null ? "—" : dias <= 0 ? "HOY" : dias + "d"}</span>
           </div>
-          <div style={{ fontSize: 12.5, color: T.mut, marginTop: 4, textTransform: "capitalize", letterSpacing: "0.03em" }}>{fechaCorta(auto.entregaFecha)} · {hora12(auto.entregaHora)}</div>
+          <div style={{ fontSize: 12.5, color: T.mut, marginTop: 4, textTransform: "capitalize", letterSpacing: "0.03em" }}>{fechaCorta(auto.entregaFecha)}{hora12(auto.entregaHora) ? " · " + hora12(auto.entregaHora) : ""}</div>
         </div>
       </div>
 
@@ -549,7 +556,8 @@ function VistaTableta({ autos, setAutos, recargar }) {
     }
   };
 
-  const enProceso = [...autos].filter((a) => !entregado(a)).sort((a, b) => diasPara(a.entregaFecha) - diasPara(b.entregaFecha));
+  const claveOrden = (a) => { const d = diasPara(a.entregaFecha); return d === null ? Infinity : d; };
+  const enProceso = [...autos].filter((a) => !entregado(a)).sort((a, b) => claveOrden(a) - claveOrden(b));
   const entregadosSemana = autos.filter(entregado).length;
 
   return (
