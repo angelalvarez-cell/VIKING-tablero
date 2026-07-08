@@ -179,16 +179,35 @@ function resumenAhumado(a) {
 const MODO_DEMO = !BACKEND_URL;
 
 async function apiListar() {
-  const r = await fetch(BACKEND_URL);
-  const j = await r.json();
+  const intento = async () => {
+    const r = await fetch(BACKEND_URL);
+    return await r.json();
+  };
+  let j;
+  try { j = await intento(); }
+  catch (netErr) { await new Promise((res) => setTimeout(res, 600)); j = await intento(); }
   if (!j.ok) throw new Error(j.error || "Error al leer");
   return j.autos;
 }
 async function apiPost(payload) {
-  const r = await fetch(BACKEND_URL, { method: "POST", body: JSON.stringify(payload) });
-  const j = await r.json();
-  if (!j.ok) throw new Error(j.error || "Error al guardar");
-  return j;
+  const intento = async () => {
+    const r = await fetch(BACKEND_URL, { method: "POST", redirect: "follow", body: JSON.stringify(payload) });
+    const txt = await r.text();
+    return JSON.parse(txt); // si Apps Script devuelve HTML de error, lanza y se reintenta
+  };
+  let ultimoErr;
+  for (let i = 0; i < 3; i++) {
+    try {
+      const j = await intento();
+      if (!j.ok) { const err = new Error(j.error || "Error al guardar"); err.rechazo = true; throw err; }
+      return j;
+    } catch (e) {
+      if (e.rechazo) throw e; // rechazo del backend (clave/regla): no reintentar
+      ultimoErr = e;
+      if (i < 2) await new Promise((res) => setTimeout(res, 500 * (i + 1)));
+    }
+  }
+  throw ultimoErr;
 }
 
 /* ================= Tokens ================= */
@@ -422,6 +441,7 @@ function Banda({ auto, ultimo }) {
 function VistaTableta({ autos, setAutos, recargar }) {
   const [flash, setFlash] = useState(null);
   const [pend, setPend] = useState({});
+  const [nota, setNota] = useState(null);
   const doFlash = (id) => { setFlash(id); setTimeout(() => setFlash((f) => (f === id ? null : f)), 900); };
   const marcarPend = (id, v) => setPend((p) => ({ ...p, [id]: v }));
 
@@ -436,13 +456,18 @@ function VistaTableta({ autos, setAutos, recargar }) {
     if (dir > 0) doFlash(id);
     if (MODO_DEMO) return;
     marcarPend(id, true);
-    try { await apiPost({ action: tipoAccion, id, dir }); }
-    catch (e) {
-      // Revertir si el backend rechazó (p. ej. Kevlar pendiente)
-      setAutos((p) => p.map((a) => (a.id === id ? { ...a, [campo]: previo[campo] } : a)));
-      alert("No se pudo guardar: " + e.message);
+    try {
+      await apiPost({ action: tipoAccion, id, dir });
+      await recargar(); // confirma con el servidor
+    } catch (e) {
+      // No adivinamos: pedimos al servidor el estado real y reconciliamos.
+      // (el cambio pudo haberse guardado aunque la respuesta fallara)
+      await recargar();
+      setNota({ id, txt: e.message && e.message.indexOf("Kevlar") >= 0 ? e.message : "No se guardó, intenta de nuevo" });
+      setTimeout(() => setNota((n) => (n && n.id === id ? null : n)), 2800);
+    } finally {
+      marcarPend(id, false);
     }
-    finally { marcarPend(id, false); recargar(); }
   };
 
   const enProceso = [...autos].filter((a) => !entregado(a)).sort((a, b) => diasPara(a.entregaFecha) - diasPara(b.entregaFecha));
@@ -493,6 +518,10 @@ function VistaTableta({ autos, setAutos, recargar }) {
                     style={{ cursor: "pointer", border: `1px solid ${T.line2}`, background: "transparent", color: T.mut, borderRadius: 12, padding: "0 18px", fontSize: 13, fontFamily: BODY }}>Deshacer</button>
                 )}
               </div>
+
+              {nota && nota.id === a.id && (
+                <div style={{ marginTop: 10, fontSize: 12.5, color: "#e0b57a", background: "rgba(201,151,63,0.12)", border: `1px solid ${T.goldSoft}`, borderRadius: 8, padding: "8px 12px" }}>{nota.txt}</div>
+              )}
 
               {conKevlar && (() => {
                 const kevlarBloqueado = a.hito < HITO_DESMONTAJE;
@@ -581,14 +610,16 @@ function Panel({ autos, setAutos, recargar }) {
   const guardar = async (a) => {
     if (MODO_DEMO) return;
     setGuardando((g) => ({ ...g, [a.id]: "…" }));
-    try { await apiPost({ action: "guardar", clave, auto: a }); setGuardando((g) => ({ ...g, [a.id]: "✓" })); setTimeout(() => setGuardando((g) => ({ ...g, [a.id]: "" })), 1800); recargar(); }
+    // No recargamos toda la lista: borraría autos nuevos aún sin guardar u otras
+    // ediciones en curso. La tarjeta ya vive en el estado local con su id.
+    try { await apiPost({ action: "guardar", clave, auto: a }); setGuardando((g) => ({ ...g, [a.id]: "✓ Guardado" })); setTimeout(() => setGuardando((g) => ({ ...g, [a.id]: "" })), 1800); }
     catch (e) { setGuardando((g) => ({ ...g, [a.id]: "✗ " + e.message })); }
   };
   const eliminar = async (id) => {
     setAutos((p) => p.filter((a) => a.id !== id));
     if (MODO_DEMO) return;
-    try { await apiPost({ action: "eliminar", clave, id }); recargar(); }
-    catch (e) { alert("No se pudo eliminar: " + e.message); recargar(); }
+    try { await apiPost({ action: "eliminar", clave, id }); }
+    catch (e) { setGuardando((g) => ({ ...g, [id]: "✗ No se pudo eliminar" })); }
   };
 
   return (
