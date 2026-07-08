@@ -601,7 +601,7 @@ function Panel({ autos, setAutos, recargar }) {
   const tgl = (id, campo, v) => setAutos((p) => p.map((a) => (a.id === id ? { ...a, [campo]: a[campo].includes(v) ? a[campo].filter((x) => x !== v) : [...a[campo], v] } : a)));
 
   const agregar = () => {
-    const nid = Math.max(0, ...autos.map((a) => a.id)) + 1;
+    const nid = Date.now(); // id único: nunca choca con otro auto (evita sobrescribir)
     setNuevoId(nid);
     setAutos((p) => [{ id: nid, tipo: "Nuevo", marca: "", modelo: "", tipoVeh: "", anio: 2026, placa: "", orden: "VK-", cliente: "", bahia: "", entregaFecha: "2026-07-20", entregaHora: "18:00", nivel: "Viking Plus", paquete: { label: "Sin paquete", codigos: [] }, glass: {}, ahumado: {}, kevlar: [], kevlarHito: 0, hito: 0, crew: [], motivo: "", notas: "" }, ...p]);
     if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
