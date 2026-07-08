@@ -119,7 +119,7 @@ const AUTOS_DEMO = [
     paquete: { label: "Protección integral", codigos: ["VK106", "VK108", "VK110", "VK130×4", "VK132"] },
     glass: { "Parabrisas": "Viking Plus", "Lateral del. izq.": "Viking Plus", "Lateral del. der.": "Viking Plus", "Lateral tras. izq.": "Viking Plus", "Lateral tras. der.": "Viking Plus", "Aletas / fijos": "Viking Plus", "Medallón": "Viking Plus" },
     ahumado: { "Lateral tras. izq.": true, "Lateral tras. der.": true, "Aletas / fijos": true, "Medallón": true },
-    kevlar: ["Puertas del.", "Puertas tras.", "Poste B", "Poste C", "Cajuela / 5ª puerta"], kevlarHito: 2,
+    kevlar: ["Puertas del.", "Puertas tras.", "Poste B", "Poste C", "Cajuela / 5ª puerta"], kevlarHito: 2, modeloNuevo: true,
     hito: 5, crew: ["Vidrios 1", "Vidrios 2"], motivo: "", notas: "Faltan 2 laterales por montar.",
   },
   {
@@ -128,14 +128,14 @@ const AUTOS_DEMO = [
     paquete: { label: "4 laterales", codigos: ["VK104"] },
     glass: { "Lateral del. izq.": "Viking Plus", "Lateral del. der.": "Viking Plus", "Lateral tras. izq.": "Viking Plus", "Lateral tras. der.": "Viking Plus" },
     ahumado: { "Lateral del. izq.": true, "Lateral del. der.": true },
-    kevlar: [], kevlarHito: 0, hito: 4, crew: ["Líder de Taller"], motivo: "", notas: "Sin marco — cuidado con sensores.",
+    kevlar: [], kevlarHito: 0, modeloNuevo: true, hito: 4, crew: ["Líder de Taller"], motivo: "", notas: "Sin marco — cuidado con sensores.",
   },
   {
     id: 3, tipo: "Garantía", marca: "Land Rover", modelo: "Range Rover Sport", tipoVeh: "SUV", anio: 2023, placa: "KTM-55-08", orden: "VK-0977",
     cliente: "M. Ibarra", bahia: "B3", entregaFecha: "2026-07-09", entregaHora: "18:00", nivel: "Viking Plus",
     paquete: { label: "Garantía", codigos: [] },
     glass: { "Lateral tras. izq.": "Viking Plus" }, ahumado: {},
-    kevlar: [], kevlarHito: 0, hito: 1, crew: ["Kevlar", "Asistente"],
+    kevlar: [], kevlarHito: 0, modeloNuevo: false, hito: 1, crew: ["Kevlar", "Asistente"],
     motivo: "Delaminación en lateral tras. izq. — deslaminar y rehacer", notas: "Vidrio en base de datos, sin escaneo.",
   },
   {
@@ -143,7 +143,7 @@ const AUTOS_DEMO = [
     cliente: "R. Delgado", bahia: "B4", entregaFecha: "2026-07-16", entregaHora: "18:00", nivel: "Viking Plus",
     paquete: { label: "Cristales completos + Kevlar", codigos: ["VK106", "VK108", "VK110", "VK130×4"] },
     glass: { "Parabrisas": "Viking Plus", "Lateral del. izq.": "Viking Plus", "Lateral del. der.": "Viking Plus", "Lateral tras. izq.": "Viking Plus", "Lateral tras. der.": "Viking Plus", "Aletas / fijos": "Viking Plus", "Medallón": "Viking Plus" },
-    ahumado: {}, kevlar: ["Puertas del.", "Puertas tras."], kevlarHito: 1,
+    ahumado: {}, kevlar: ["Puertas del.", "Puertas tras."], kevlarHito: 1, modeloNuevo: false,
     hito: 2, crew: ["Técnico Digital"], motivo: "", notas: "Moldes de Kevlar en base — corte directo CNC.",
   },
 ];
@@ -173,6 +173,34 @@ function resumenAhumado(a) {
   if (tra.length && tra.every((p) => a.ahumado[p]) && !del.some((p) => a.ahumado[p]) && !a.ahumado["Parabrisas"]) return "Ahumado traseros";
   if (sinPb.every((p) => a.ahumado[p])) return a.ahumado["Parabrisas"] ? "Ahumado total + parabrisas" : "Ahumado total";
   return "Ahumado parcial";
+}
+
+/* ===== Estimador de carga → fecha SUGERIDA (rústico; se afina con tiempos de campo) =====
+   Cada auto pesa en "autos-equivalentes": 4 laterales repetido ≈ 1.0. El taller despacha
+   ~2.8/semana (doc de Capacidad). La fecha suma la carga de los autos adelante en la fila. */
+const CAP_SEMANA = 2.8;
+function pesoTotal(a) {
+  const nVidrios = GLASS_POSITIONS.filter((p) => a.glass[p]).length;
+  let w = 0.4 + 0.15 * nVidrios;                 // 4 laterales ≈ 1.0 (auto estándar)
+  if (a.glass["Parabrisas"]) w += 0.25;          // el parabrisas ocupa su propio ciclo de autoclave
+  w += 0.05 * ((a.kevlar && a.kevlar.length) || 0); // Kevlar corre en paralelo: pesa poco al cuello
+  if (a.modeloNuevo) w += 1.3;                   // primera vez del modelo: gran carga del Técnico Digital
+  return w;
+}
+function pesoRestante(a) {
+  const frac = (HITOS.length - 1 - a.hito) / (HITOS.length - 1);
+  return pesoTotal(a) * Math.max(0, frac);
+}
+function sumarDiasHabiles(desde, dias) {
+  const d = new Date(desde); let restan = Math.max(1, Math.ceil(dias));
+  while (restan > 0) { d.setDate(d.getDate() + 1); const dow = d.getDay(); if (dow !== 0 && dow !== 6) restan--; }
+  return d;
+}
+function fechaSugerida(objetivo, autos) {
+  const adelante = autos.filter((a) => !entregado(a) && a.id !== objetivo.id).reduce((s, a) => s + pesoRestante(a), 0);
+  const total = adelante + pesoTotal(objetivo);
+  const f = sumarDiasHabiles(new Date(), (total / CAP_SEMANA) * 5);
+  return f.toISOString().slice(0, 10);
 }
 
 /* ================= Capa de datos (Sheets o demo) ================= */
@@ -291,11 +319,23 @@ export default function TableroViking() {
 }
 
 /* ================= Vista TV (output) ================= */
+const ROLES = ["Vendedor", "Técnico Digital", "Vidrios", "Líder", "Kevlar"];
 function VistaTV({ autos }) {
   const orden = [...autos].filter((a) => !entregado(a)).sort((a, b) => diasPara(a.entregaFecha) - diasPara(b.entregaFecha));
-  const ocupacion = {};
-  PUESTOS.forEach((p) => (ocupacion[p] = null));
-  autos.forEach((a) => a.crew.forEach((p) => { if (!ocupacion[p] && !entregado(a)) ocupacion[p] = { m: nombreAuto(a), e: HITOS[a.hito].n }; }));
+
+  // Equipo deducido de los hitos: para cada rol, qué autos tiene en sus manos (paso siguiente).
+  const cola = {};
+  ROLES.forEach((r) => (cola[r] = []));
+  autos.forEach((a) => {
+    if (entregado(a)) return;
+    if (a.hito < HITOS.length - 1) {
+      const sig = HITOS[a.hito + 1];
+      if (cola[sig.ow]) cola[sig.ow].push({ auto: a, etapa: sig.n });
+    }
+    if (a.kevlar.length && a.hito >= HITO_DESMONTAJE && a.kevlarHito < 3) {
+      cola["Kevlar"].push({ auto: a, etapa: KEVLAR_HITOS[Math.min(3, a.kevlarHito + 1)] });
+    }
+  });
 
   return (
     <main style={{ maxWidth: 1240, margin: "0 auto", padding: "16px 34px 60px" }}>
@@ -304,16 +344,25 @@ function VistaTV({ autos }) {
       {orden.length === 0 && <div style={{ textAlign: "center", color: T.dim, padding: "60px 0" }}>Sin autos en proceso.</div>}
       <div style={{ marginTop: 40, display: "flex", alignItems: "baseline", gap: 14 }}>
         <span style={{ fontFamily: DISPLAY, fontSize: 11, letterSpacing: "0.34em", color: T.gold, textTransform: "uppercase" }}>Equipo</span>
+        <span style={{ fontSize: 11, color: T.dim }}>en vivo, según la etapa de cada auto</span>
         <span style={{ flex: 1, height: 1, background: T.line }} />
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", columnGap: 34, marginTop: 6 }}>
-        {PUESTOS.map((p) => {
-          const o = ocupacion[p];
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", columnGap: 26, marginTop: 6 }}>
+        {ROLES.map((r) => {
+          const q = cola[r];
+          const enFila = q.length - 1;
           return (
-            <div key={p} style={{ padding: "13px 0", borderBottom: `1px solid ${T.line}` }}>
-              <div style={{ fontSize: 10, letterSpacing: "0.16em", color: T.dim, textTransform: "uppercase" }}>{p}</div>
-              <div style={{ fontSize: 13.5, marginTop: 4, fontWeight: o ? 600 : 400, color: o ? T.ink : T.dim, fontStyle: o ? "normal" : "italic" }}>{o ? o.m : "Disponible"}</div>
-              {o && <div style={{ fontSize: 11, color: T.mut, marginTop: 1 }}>{o.e}</div>}
+            <div key={r} style={{ padding: "13px 0", borderBottom: `1px solid ${T.line}` }}>
+              <div style={{ fontSize: 10, letterSpacing: "0.16em", color: T.dim, textTransform: "uppercase" }}>{r}</div>
+              {q.length === 0 ? (
+                <div style={{ fontSize: 13.5, marginTop: 4, color: T.dim, fontStyle: "italic" }}>Disponible</div>
+              ) : (
+                <>
+                  <div style={{ fontSize: 13.5, marginTop: 4, fontWeight: 600, color: T.ink }}>{nombreAuto(q[0].auto)}</div>
+                  <div style={{ fontSize: 11, color: T.mut, marginTop: 1 }}>{q[0].etapa}</div>
+                  {enFila > 0 && <div style={{ fontSize: 11, color: T.gold, marginTop: 3 }}>+{enFila} en fila</div>}
+                </>
+              )}
             </div>
           );
         })}
@@ -431,8 +480,7 @@ function Banda({ auto, ultimo }) {
         )}
       </div>
 
-      {auto.crew.length > 0 && <div style={{ marginTop: 13, fontSize: 12.5, color: T.mut }}><span style={{ color: T.dim }}>Equipo&ensp;</span>{auto.crew.join(" · ")}{auto.notas ? <span style={{ color: T.dim, fontStyle: "italic" }}> &nbsp;—&nbsp; {auto.notas}</span> : null}</div>}
-      {auto.crew.length === 0 && auto.notas && <div style={{ marginTop: 13, fontSize: 12.5, color: T.dim, fontStyle: "italic" }}>{auto.notas}</div>}
+      {auto.notas && <div style={{ marginTop: 13, fontSize: 12.5, color: T.dim, fontStyle: "italic" }}>{auto.notas}</div>}
     </section>
   );
 }
@@ -603,7 +651,7 @@ function Panel({ autos, setAutos, recargar }) {
   const agregar = () => {
     const nid = Date.now(); // id único: nunca choca con otro auto (evita sobrescribir)
     setNuevoId(nid);
-    setAutos((p) => [{ id: nid, tipo: "Nuevo", marca: "", modelo: "", tipoVeh: "", anio: 2026, placa: "", orden: "VK-", cliente: "", bahia: "", entregaFecha: "2026-07-20", entregaHora: "18:00", nivel: "Viking Plus", paquete: { label: "Sin paquete", codigos: [] }, glass: {}, ahumado: {}, kevlar: [], kevlarHito: 0, hito: 0, crew: [], motivo: "", notas: "" }, ...p]);
+    setAutos((p) => [{ id: nid, tipo: "Nuevo", marca: "", modelo: "", tipoVeh: "", anio: 2026, placa: "", orden: "VK-", cliente: "", bahia: "", entregaFecha: "2026-07-20", entregaHora: "18:00", nivel: "Viking Plus", paquete: { label: "Sin paquete", codigos: [] }, glass: {}, ahumado: {}, kevlar: [], kevlarHito: 0, modeloNuevo: true, hito: 0, crew: [], motivo: "", notas: "" }, ...p]);
     if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
@@ -662,12 +710,29 @@ function Panel({ autos, setAutos, recargar }) {
                 <Campo label="Placa"><input style={S.inp} value={a.placa} onChange={(e) => upd(a.id, "placa", e.target.value)} /></Campo>
                 <Campo label="Bahía"><input style={S.inp} value={a.bahia} onChange={(e) => upd(a.id, "bahia", e.target.value)} placeholder="B1" /></Campo>
               </div>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1.4fr 1fr .8fr", gap: 10, marginBottom: 14 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
+                <Lbl>Modelo</Lbl>
+                <button onClick={() => upd(a.id, "modeloNuevo", true)} style={S.chip(a.modeloNuevo)}>Primera vez</button>
+                <button onClick={() => upd(a.id, "modeloNuevo", false)} style={S.chip(!a.modeloNuevo)}>Repetido</button>
+                <span style={{ fontSize: 11.5, color: T.mut }}>La primera vez de un modelo ≈ +20 h de trabajo digital (afecta la fecha sugerida)</span>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1.4fr 1fr .8fr", gap: 10, marginBottom: 8 }}>
                 <Campo label="Orden"><input style={S.inp} value={a.orden} onChange={(e) => upd(a.id, "orden", e.target.value)} /></Campo>
                 <Campo label="Cliente (privado)"><input style={S.inp} value={a.cliente} onChange={(e) => upd(a.id, "cliente", e.target.value)} /></Campo>
                 <Campo label="Entrega"><input style={S.inp} type="date" value={a.entregaFecha} onChange={(e) => upd(a.id, "entregaFecha", e.target.value)} /></Campo>
                 <Campo label="Hora"><input style={S.inp} type="time" value={a.entregaHora} onChange={(e) => upd(a.id, "entregaHora", e.target.value)} /></Campo>
               </div>
+              {(() => {
+                const sug = fechaSugerida(a, autos);
+                const coincide = a.entregaFecha === sug;
+                return (
+                  <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", marginBottom: 14, fontSize: 12.5, color: T.mut }}>
+                    <span>Sugerencia por carga del taller: <b style={{ color: T.gold, textTransform: "capitalize" }}>{fechaCorta(sug)}</b> <span style={{ color: T.dim }}>(estimado)</span></span>
+                    {!coincide && <button onClick={() => upd(a.id, "entregaFecha", sug)} style={S.ghost}>Usar fecha sugerida</button>}
+                    {coincide && <span style={{ color: T.teal }}>✓ en uso</span>}
+                  </div>
+                );
+              })()}
 
               {esG ? (
                 <div style={{ marginBottom: 14 }}><Campo label="Motivo de garantía"><input style={S.inp} value={a.motivo} onChange={(e) => upd(a.id, "motivo", e.target.value)} placeholder="ej. Delaminación lateral tras. izq. — deslaminar y rehacer" /></Campo></div>
@@ -704,18 +769,12 @@ function Panel({ autos, setAutos, recargar }) {
                 </>
               )}
 
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr", gap: 12, marginBottom: 12 }}>
+              <div style={{ marginBottom: 12 }}>
                 <Campo label={esG ? "Etapa de arranque / actual" : "Etapa actual"}>
                   <select style={S.inp} value={a.hito} onChange={(e) => upd(a.id, "hito", Number(e.target.value))}>
                     {HITOS.map((s, i) => <option key={s.n} value={i}>{i + 1}. {s.n} ({s.ow})</option>)}
                   </select>
                 </Campo>
-                <div>
-                  <Lbl style={{ display: "block", marginBottom: 7 }}>Equipo asignado</Lbl>
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 7 }}>
-                    {PUESTOS.map((p) => <button key={p} onClick={() => tgl(a.id, "crew", p)} style={S.chip(a.crew.includes(p))}>{p}</button>)}
-                  </div>
-                </div>
               </div>
               <Campo label="Notas"><textarea style={{ ...S.inp, minHeight: 42, resize: "vertical" }} value={a.notas} onChange={(e) => upd(a.id, "notas", e.target.value)} /></Campo>
 
