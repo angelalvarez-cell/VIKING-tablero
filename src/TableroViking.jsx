@@ -528,6 +528,7 @@ function VistaTableta({ autos, setAutos, recargar }) {
   const [flash, setFlash] = useState(null);
   const [pend, setPend] = useState({});
   const [nota, setNota] = useState(null);
+  const [area, setArea] = useState("Todos");
   const doFlash = (id) => { setFlash(id); setTimeout(() => setFlash((f) => (f === id ? null : f)), 900); };
   const marcarPend = (id, v) => setPend((p) => ({ ...p, [id]: v }));
 
@@ -560,6 +561,13 @@ function VistaTableta({ autos, setAutos, recargar }) {
   const enProceso = [...autos].filter((a) => !entregado(a)).sort((a, b) => claveOrden(a) - claveOrden(b));
   const entregadosSemana = autos.filter(entregado).length;
 
+  // ¿Le toca a este rol el siguiente paso del auto? (Kevlar = carril activo)
+  const tocaA = (a, rol) => {
+    if (rol === "Kevlar") return a.kevlar.length > 0 && a.hito >= HITO_DESMONTAJE && a.kevlarHito < 3;
+    return a.hito < HITOS.length - 1 && HITOS[a.hito + 1].ow === rol;
+  };
+  const visibles = area === "Todos" ? enProceso : enProceso.filter((x) => tocaA(x, area));
+
   return (
     <main style={{ maxWidth: 860, margin: "0 auto", padding: "18px 20px 70px" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingBottom: 14, marginBottom: 6, borderBottom: `1px solid ${T.line}` }}>
@@ -567,8 +575,20 @@ function VistaTableta({ autos, setAutos, recargar }) {
         <span style={{ fontSize: 12.5, color: T.mut }}>Entregados esta semana <b className="tnum" style={{ color: T.gold, fontSize: 17, fontFamily: DISPLAY, marginLeft: 6 }}>{entregadosSemana}</b></span>
       </div>
 
+      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", margin: "12px 0 4px" }}>
+        <span style={{ fontSize: 10, letterSpacing: "0.16em", color: T.dim, textTransform: "uppercase", marginRight: 2 }}>Ver</span>
+        {["Todos", ...ROLES].map((r) => {
+          const n = r === "Todos" ? enProceso.length : enProceso.filter((x) => tocaA(x, r)).length;
+          return (
+            <button key={r} onClick={() => setArea(r)} style={{ ...S.chip(area === r), fontSize: 12.5, padding: "6px 13px" }}>
+              {r}{n > 0 && <span style={{ marginLeft: 6, opacity: 0.7 }}>{n}</span>}
+            </button>
+          );
+        })}
+      </div>
+
       <div style={{ display: "grid", gap: 14, marginTop: 12 }}>
-        {enProceso.map((a) => {
+        {visibles.map((a) => {
           const et = HITOS[a.hito];
           const esUltimo = a.hito >= HITOS.length - 1;
           const conKevlar = a.kevlar.length > 0;
@@ -635,7 +655,7 @@ function VistaTableta({ autos, setAutos, recargar }) {
             </div>
           );
         })}
-        {enProceso.length === 0 && <div style={{ textAlign: "center", color: T.dim, padding: "50px 0", fontSize: 14 }}>No hay autos en proceso.</div>}
+        {visibles.length === 0 && <div style={{ textAlign: "center", color: T.dim, padding: "50px 0", fontSize: 14 }}>{enProceso.length === 0 ? "No hay autos en proceso." : "Nada pendiente para " + area + " ahora mismo."}</div>}
       </div>
     </main>
   );
