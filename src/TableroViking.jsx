@@ -459,8 +459,8 @@ function Banda({ auto, ultimo }) {
                 return (
                   <div key={p} style={{ display: "flex", alignItems: "baseline", gap: 10, padding: "3px 0" }}>
                     <span style={{ width: 6, height: 6, borderRadius: "50%", background: plus ? T.gold : T.blue, flexShrink: 0, transform: "translateY(-1px)" }} />
-                    {cod && <span className="tnum" style={{ fontSize: 13, fontWeight: 700, letterSpacing: "0.03em", color: T.ink, minWidth: 84 }}>{cod}</span>}
-                    <span style={{ fontSize: 12.5, color: T.mut, minWidth: 118 }}>{p}</span>
+                    <span style={{ fontSize: 13.5, color: T.ink, minWidth: 128 }}>{p}</span>
+                    {cod && <span className="tnum" style={{ fontSize: 13, fontWeight: 700, letterSpacing: "0.03em", color: T.mut, minWidth: 84 }}>{cod}</span>}
                     <span style={{ fontSize: 13, fontWeight: 600, color: plus ? T.gold : T.blue }}>{auto.glass[p]}</span>
                     {auto.ahumado[p] && <span style={{ fontSize: 11, letterSpacing: "0.08em", textTransform: "uppercase", color: T.mut, border: `1px solid ${T.line2}`, borderRadius: 4, padding: "1px 6px" }}>ahumado</span>}
                   </div>
