@@ -334,7 +334,7 @@ export default function TableroViking() {
           </div>
         </div>
         <nav style={{ display: "flex", gap: 26 }}>
-          {[["tv", "Taller"], ["tableta", "Tableta"], ["admin", "Control"]].map(([k, lbl]) => (
+          {[["tv", "Taller"], ["tableta", "Tableta"], ["carga", "Carga"], ["admin", "Control"]].map(([k, lbl]) => (
             <button key={k} onClick={() => setVista(k)} style={{ background: "none", border: "none", cursor: "pointer", padding: "6px 2px", fontFamily: BODY, fontSize: 13, fontWeight: 600, letterSpacing: "0.12em", textTransform: "uppercase", color: vista === k ? T.gold : T.dim, borderBottom: `2px solid ${vista === k ? T.gold : "transparent"}` }}>{lbl}</button>
           ))}
         </nav>
@@ -348,6 +348,7 @@ export default function TableroViking() {
 
       {vista === "tv" && <VistaTV autos={autos} />}
       {vista === "tableta" && <VistaTableta autos={autos} setAutos={setAutos} recargar={cargar} />}
+      {vista === "carga" && <VistaCarga autos={autos} />}
       {vista === "admin" && <Panel autos={autos} setAutos={setAutos} recargar={cargar} />}
     </div>
   );
@@ -373,8 +374,38 @@ function VistaTV({ autos }) {
     }
   });
 
+  // Pronóstico semanal (piloto): entregas por día, Lun–Vie de la semana actual.
+  const lunes = (() => { const d = new Date(); const dow = (d.getDay() + 6) % 7; d.setDate(d.getDate() - dow); d.setHours(0, 0, 0, 0); return d; })();
+  const semana = [0, 1, 2, 3, 4].map((i) => {
+    const dia = new Date(lunes); dia.setDate(lunes.getDate() + i);
+    const iso = dia.toISOString().slice(0, 10);
+    const hoyISO = new Date().toISOString().slice(0, 10);
+    const autosDia = [...autos].filter((a) => !entregado(a) && aFecha(a.entregaFecha) && aFecha(a.entregaFecha).toISOString().slice(0, 10) === iso);
+    return { dia, iso, esHoy: iso === hoyISO, autos: autosDia };
+  });
+
   return (
     <main style={{ maxWidth: 1240, margin: "0 auto", padding: "16px 34px 60px" }}>
+      <div style={{ display: "flex", gap: 10, marginBottom: 18 }}>
+        {semana.map((d) => (
+          <div key={d.iso} style={{ flex: 1, borderRadius: 10, padding: "10px 12px", background: d.esHoy ? T.goldDim : T.panel, border: `1px solid ${d.esHoy ? T.goldSoft : T.line}` }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+              <span style={{ fontSize: 10.5, letterSpacing: "0.14em", textTransform: "uppercase", color: d.esHoy ? T.gold : T.dim }}>{d.dia.toLocaleDateString("es-MX", { weekday: "short" })}</span>
+              <span className="tnum" style={{ fontSize: 12, color: d.esHoy ? T.gold : T.mut }}>{d.dia.getDate()}</span>
+            </div>
+            <div style={{ marginTop: 8, minHeight: 34 }}>
+              {d.autos.length === 0 ? (
+                <div style={{ fontSize: 11, color: T.dim, fontStyle: "italic" }}>—</div>
+              ) : d.autos.map((a) => (
+                <div key={a.id} style={{ fontSize: 11.5, color: T.ink, lineHeight: 1.35, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                  <span style={{ color: urgencia(a) === "urgente" ? URG.urgente.c : T.gold }}>•</span> {nombreAuto(a)}
+                </div>
+              ))}
+            </div>
+            {d.autos.length > 0 && <div style={{ fontSize: 10, color: T.dim, marginTop: 4 }}>{d.autos.length} {d.autos.length === 1 ? "entrega" : "entregas"}</div>}
+          </div>
+        ))}
+      </div>
       <Leyenda />
       {orden.map((a, i) => <Banda key={a.id} auto={a} ultimo={i === orden.length - 1} />)}
       {orden.length === 0 && <div style={{ textAlign: "center", color: T.dim, padding: "60px 0" }}>Sin autos en proceso.</div>}
