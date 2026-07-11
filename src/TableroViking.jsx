@@ -357,6 +357,58 @@ export default function TableroViking() {
 /* ================= Vista TV (output) ================= */
 const ROLES = ["Vendedor", "Técnico Digital", "Vidrios", "Líder", "Kevlar"];
 
+function VistaTV({ autos }) {
+  const claveOrden = (a) => { const d = diasPara(a.entregaFecha); return d === null ? Infinity : d; };
+  const orden = [...autos].filter((a) => !entregado(a)).sort((a, b) => claveOrden(a) - claveOrden(b));
+
+  // Equipo deducido de los hitos: para cada rol, qué autos tiene en sus manos (paso siguiente).
+  const cola = {};
+  ROLES.forEach((r) => (cola[r] = []));
+  autos.forEach((a) => {
+    if (entregado(a)) return;
+    if (a.hito < HITOS.length - 1) {
+      const sig = HITOS[a.hito + 1];
+      if (cola[sig.ow]) cola[sig.ow].push({ auto: a, etapa: sig.n });
+    }
+    if (a.kevlar.length && a.hito >= HITO_DESMONTAJE && a.kevlarHito < 3) {
+      cola["Kevlar"].push({ auto: a, etapa: KEVLAR_HITOS[Math.min(3, a.kevlarHito + 1)] });
+    }
+  });
+
+  return (
+    <main style={{ maxWidth: 1240, margin: "0 auto", padding: "16px 34px 60px" }}>
+      <Leyenda />
+      {orden.map((a, i) => <Banda key={a.id} auto={a} ultimo={i === orden.length - 1} />)}
+      {orden.length === 0 && <div style={{ textAlign: "center", color: T.dim, padding: "60px 0" }}>Sin autos en proceso.</div>}
+      <div style={{ marginTop: 40, display: "flex", alignItems: "baseline", gap: 14 }}>
+        <span style={{ fontFamily: DISPLAY, fontSize: 11, letterSpacing: "0.34em", color: T.gold, textTransform: "uppercase" }}>Equipo</span>
+        <span style={{ fontSize: 11, color: T.dim }}>en vivo, según la etapa de cada auto</span>
+        <span style={{ flex: 1, height: 1, background: T.line }} />
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", columnGap: 26, marginTop: 6 }}>
+        {ROLES.map((r) => {
+          const q = cola[r];
+          const enFila = q.length - 1;
+          return (
+            <div key={r} style={{ padding: "13px 0", borderBottom: `1px solid ${T.line}` }}>
+              <div style={{ fontSize: 10, letterSpacing: "0.16em", color: T.dim, textTransform: "uppercase" }}>{r}</div>
+              {q.length === 0 ? (
+                <div style={{ fontSize: 13.5, marginTop: 4, color: T.dim, fontStyle: "italic" }}>Disponible</div>
+              ) : (
+                <>
+                  <div style={{ fontSize: 13.5, marginTop: 4, fontWeight: 600, color: T.ink }}>{nombreAuto(q[0].auto)}</div>
+                  <div style={{ fontSize: 11, color: T.mut, marginTop: 1 }}>{q[0].etapa}</div>
+                  {enFila > 0 && <div style={{ fontSize: 11, color: T.gold, marginTop: 3 }}>+{enFila} en fila</div>}
+                </>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </main>
+  );
+}
+
 /* ================= Vista Agenda (Gantt semanal por operador — piloto aproximado) ================= */
 function VistaAgenda({ autos }) {
   // 5 días hábiles a partir de hoy
