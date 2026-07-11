@@ -334,7 +334,7 @@ export default function TableroViking() {
           </div>
         </div>
         <nav style={{ display: "flex", gap: 26 }}>
-          {[["tv", "Taller"], ["tableta", "Tableta"], ["carga", "Carga"], ["admin", "Control"]].map(([k, lbl]) => (
+          {[["tv", "Taller"], ["tableta", "Tableta"], ["agenda", "Agenda"], ["admin", "Control"]].map(([k, lbl]) => (
             <button key={k} onClick={() => setVista(k)} style={{ background: "none", border: "none", cursor: "pointer", padding: "6px 2px", fontFamily: BODY, fontSize: 13, fontWeight: 600, letterSpacing: "0.12em", textTransform: "uppercase", color: vista === k ? T.gold : T.dim, borderBottom: `2px solid ${vista === k ? T.gold : "transparent"}` }}>{lbl}</button>
           ))}
         </nav>
@@ -348,7 +348,7 @@ export default function TableroViking() {
 
       {vista === "tv" && <VistaTV autos={autos} />}
       {vista === "tableta" && <VistaTableta autos={autos} setAutos={setAutos} recargar={cargar} />}
-      {vista === "carga" && <VistaCarga autos={autos} />}
+      {vista === "agenda" && <VistaAgenda autos={autos} />}
       {vista === "admin" && <Panel autos={autos} setAutos={setAutos} recargar={cargar} />}
     </div>
   );
@@ -356,84 +356,95 @@ export default function TableroViking() {
 
 /* ================= Vista TV (output) ================= */
 const ROLES = ["Vendedor", "Técnico Digital", "Vidrios", "Líder", "Kevlar"];
-function VistaTV({ autos }) {
+
+/* ================= Vista Agenda (Gantt semanal por operador — piloto aproximado) ================= */
+function VistaAgenda({ autos }) {
+  // 5 días hábiles a partir de hoy
+  const dias = [];
+  { const d = new Date(); d.setHours(0, 0, 0, 0); while (dias.length < 5) { const dow = d.getDay(); if (dow !== 0 && dow !== 6) dias.push(new Date(d)); d.setDate(d.getDate() + 1); } }
+  const hoyISO = new Date().toISOString().slice(0, 10);
   const claveOrden = (a) => { const d = diasPara(a.entregaFecha); return d === null ? Infinity : d; };
-  const orden = [...autos].filter((a) => !entregado(a)).sort((a, b) => claveOrden(a) - claveOrden(b));
+  const enProceso = [...autos].filter((a) => !entregado(a)).sort((a, b) => claveOrden(a) - claveOrden(b));
 
-  // Equipo deducido de los hitos: para cada rol, qué autos tiene en sus manos (paso siguiente).
-  const cola = {};
-  ROLES.forEach((r) => (cola[r] = []));
-  autos.forEach((a) => {
-    if (entregado(a)) return;
-    if (a.hito < HITOS.length - 1) {
-      const sig = HITOS[a.hito + 1];
-      if (cola[sig.ow]) cola[sig.ow].push({ auto: a, etapa: sig.n });
+  const filas = ["Vendedor", "Técnico Digital", "Vidrios", "Líder", "Kevlar"];
+  const grid = {}; filas.forEach((f) => (grid[f] = [[], [], [], [], []]));
+
+  // Reparto aproximado: cada auto avanza sus etapas restantes en secuencia (~2 etapas/día);
+  // el Kevlar corre en paralelo en su carril. Es una PROYECCIÓN visual, no el motor fino.
+  enProceso.forEach((a) => {
+    let seq = 0;
+    for (let h = a.hito + 1; h < HITOS.length; h++) {
+      const owner = HITOS[h].ow;
+      const dia = Math.floor(seq / 2);
+      if (dia < 5 && grid[owner]) grid[owner][dia].push({ auto: a, etapa: HITOS[h].n });
+      seq++;
     }
-    if (a.kevlar.length && a.hito >= HITO_DESMONTAJE && a.kevlarHito < 3) {
-      cola["Kevlar"].push({ auto: a, etapa: KEVLAR_HITOS[Math.min(3, a.kevlarHito + 1)] });
+    if (a.kevlar.length) {
+      const offset = a.hito < HITO_DESMONTAJE ? 1 : 0; // el Kevlar arranca al desmontar
+      let ks = 0;
+      for (let k = a.kevlarHito + 1; k <= 3; k++) {
+        const dia = offset + ks;
+        if (dia < 5) grid["Kevlar"][dia].push({ auto: a, etapa: KEVLAR_HITOS[k] });
+        ks++;
+      }
     }
   });
 
-  // Pronóstico semanal (piloto): entregas por día, Lun–Vie de la semana actual.
-  const lunes = (() => { const d = new Date(); const dow = (d.getDay() + 6) % 7; d.setDate(d.getDate() - dow); d.setHours(0, 0, 0, 0); return d; })();
-  const semana = [0, 1, 2, 3, 4].map((i) => {
-    const dia = new Date(lunes); dia.setDate(lunes.getDate() + i);
-    const iso = dia.toISOString().slice(0, 10);
-    const hoyISO = new Date().toISOString().slice(0, 10);
-    const autosDia = [...autos].filter((a) => !entregado(a) && aFecha(a.entregaFecha) && aFecha(a.entregaFecha).toISOString().slice(0, 10) === iso);
-    return { dia, iso, esHoy: iso === hoyISO, autos: autosDia };
-  });
+  const cellBg = (esHoy) => (esHoy ? "rgba(201,151,63,0.05)" : "transparent");
 
   return (
-    <main style={{ maxWidth: 1240, margin: "0 auto", padding: "16px 34px 60px" }}>
-      <div style={{ display: "flex", gap: 10, marginBottom: 18 }}>
-        {semana.map((d) => (
-          <div key={d.iso} style={{ flex: 1, borderRadius: 10, padding: "10px 12px", background: d.esHoy ? T.goldDim : T.panel, border: `1px solid ${d.esHoy ? T.goldSoft : T.line}` }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-              <span style={{ fontSize: 10.5, letterSpacing: "0.14em", textTransform: "uppercase", color: d.esHoy ? T.gold : T.dim }}>{d.dia.toLocaleDateString("es-MX", { weekday: "short" })}</span>
-              <span className="tnum" style={{ fontSize: 12, color: d.esHoy ? T.gold : T.mut }}>{d.dia.getDate()}</span>
-            </div>
-            <div style={{ marginTop: 8, minHeight: 34 }}>
-              {d.autos.length === 0 ? (
-                <div style={{ fontSize: 11, color: T.dim, fontStyle: "italic" }}>—</div>
-              ) : d.autos.map((a) => (
-                <div key={a.id} style={{ fontSize: 11.5, color: T.ink, lineHeight: 1.35, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                  <span style={{ color: urgencia(a) === "urgente" ? URG.urgente.c : T.gold }}>•</span> {nombreAuto(a)}
-                </div>
-              ))}
-            </div>
-            {d.autos.length > 0 && <div style={{ fontSize: 10, color: T.dim, marginTop: 4 }}>{d.autos.length} {d.autos.length === 1 ? "entrega" : "entregas"}</div>}
-          </div>
-        ))}
+    <main style={{ maxWidth: 1240, margin: "0 auto", padding: "20px 34px 60px" }}>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 14, marginBottom: 6 }}>
+        <span style={{ fontFamily: DISPLAY, fontSize: 12, letterSpacing: "0.3em", color: T.gold, textTransform: "uppercase" }}>Agenda de la semana</span>
+        <span style={{ fontSize: 12, color: T.mut }}>proyección aproximada por operador · piloto</span>
       </div>
-      <Leyenda />
-      {orden.map((a, i) => <Banda key={a.id} auto={a} ultimo={i === orden.length - 1} />)}
-      {orden.length === 0 && <div style={{ textAlign: "center", color: T.dim, padding: "60px 0" }}>Sin autos en proceso.</div>}
-      <div style={{ marginTop: 40, display: "flex", alignItems: "baseline", gap: 14 }}>
-        <span style={{ fontFamily: DISPLAY, fontSize: 11, letterSpacing: "0.34em", color: T.gold, textTransform: "uppercase" }}>Equipo</span>
-        <span style={{ fontSize: 11, color: T.dim }}>en vivo, según la etapa de cada auto</span>
-        <span style={{ flex: 1, height: 1, background: T.line }} />
-      </div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", columnGap: 26, marginTop: 6 }}>
-        {ROLES.map((r) => {
-          const q = cola[r];
-          const enFila = q.length - 1;
+
+      <div style={{ display: "grid", gridTemplateColumns: "132px repeat(5, 1fr)", border: `1px solid ${T.line}`, borderRadius: 12, overflow: "hidden", marginTop: 14 }}>
+        {/* encabezado */}
+        <div style={{ background: T.panel, borderBottom: `1px solid ${T.line}`, padding: "12px 14px" }} />
+        {dias.map((d, i) => {
+          const esHoy = d.toISOString().slice(0, 10) === hoyISO;
           return (
-            <div key={r} style={{ padding: "13px 0", borderBottom: `1px solid ${T.line}` }}>
-              <div style={{ fontSize: 10, letterSpacing: "0.16em", color: T.dim, textTransform: "uppercase" }}>{r}</div>
-              {q.length === 0 ? (
-                <div style={{ fontSize: 13.5, marginTop: 4, color: T.dim, fontStyle: "italic" }}>Disponible</div>
-              ) : (
-                <>
-                  <div style={{ fontSize: 13.5, marginTop: 4, fontWeight: 600, color: T.ink }}>{nombreAuto(q[0].auto)}</div>
-                  <div style={{ fontSize: 11, color: T.mut, marginTop: 1 }}>{q[0].etapa}</div>
-                  {enFila > 0 && <div style={{ fontSize: 11, color: T.gold, marginTop: 3 }}>+{enFila} en fila</div>}
-                </>
-              )}
+            <div key={i} style={{ background: esHoy ? T.goldDim : T.panel, borderBottom: `1px solid ${T.line}`, borderLeft: `1px solid ${T.line}`, padding: "10px 12px", textAlign: "center" }}>
+              <div style={{ fontSize: 10.5, letterSpacing: "0.14em", textTransform: "uppercase", color: esHoy ? T.gold : T.dim }}>{d.toLocaleDateString("es-MX", { weekday: "short" })}</div>
+              <div className="tnum" style={{ fontSize: 13, color: esHoy ? T.gold : T.mut, marginTop: 2 }}>{d.getDate()}</div>
             </div>
           );
         })}
+
+        {/* filas por operador */}
+        {filas.map((f) => (
+          <div key={f} style={{ display: "contents" }}>
+            <div style={{ background: T.panel, borderBottom: `1px solid ${T.line}`, padding: "12px 14px", display: "flex", alignItems: "center" }}>
+              <span style={{ fontSize: 11, letterSpacing: "0.1em", textTransform: "uppercase", color: T.ink, fontWeight: 600 }}>{f}</span>
+            </div>
+            {dias.map((d, i) => {
+              const esHoy = d.toISOString().slice(0, 10) === hoyISO;
+              const bloques = grid[f][i];
+              return (
+                <div key={i} style={{ borderBottom: `1px solid ${T.line}`, borderLeft: `1px solid ${T.line}`, padding: 8, minHeight: 62, background: cellBg(esHoy) }}>
+                  {bloques.map((b, j) => {
+                    const plus = false;
+                    const urg = urgencia(b.auto) === "urgente";
+                    return (
+                      <div key={j} style={{ background: T.panel, border: `1px solid ${urg ? URG.urgente.c : T.line2}`, borderLeft: `3px solid ${urg ? URG.urgente.c : T.goldSoft}`, borderRadius: 6, padding: "5px 8px", marginBottom: 5 }}>
+                        <div style={{ fontSize: 11.5, fontWeight: 600, color: T.ink, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{nombreAuto(b.auto)}</div>
+                        <div style={{ fontSize: 10, color: f === "Kevlar" ? T.teal : T.gold, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{b.etapa}</div>
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })}
+          </div>
+        ))}
       </div>
+
+      <p style={{ fontSize: 11.5, color: T.dim, marginTop: 16, lineHeight: 1.5 }}>
+        Proyección <b style={{ color: T.mut }}>aproximada</b>: reparte las etapas restantes de cada auto a lo largo de la semana con reglas
+        simples (no modela el autoclave como recurso, ni el lag de cejas, ni el detalle de dependencias). Es un piloto visual mientras la
+        agenda fina por operador queda lista. El Kevlar se muestra en su propio carril.
+      </p>
     </main>
   );
 }
