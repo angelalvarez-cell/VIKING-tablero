@@ -379,7 +379,7 @@ function VistaTV({ autos }) {
     <main style={{ maxWidth: 1900, margin: "0 auto", padding: "16px 26px 40px" }}>
       <Leyenda />
       {orden.length > 0 && (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(400px, 1fr))", gap: 12, marginTop: 14 }}>
+        <div style={{ display: "grid", gridTemplateColumns: `repeat(${Math.min(3, orden.length)}, 1fr)`, gap: 12, marginTop: 14 }}>
           {orden.map((a) => <Banda key={a.id} auto={a} />)}
         </div>
       )}
