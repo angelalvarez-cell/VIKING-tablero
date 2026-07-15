@@ -376,11 +376,15 @@ function VistaTV({ autos }) {
   });
 
   return (
-    <main style={{ maxWidth: 1240, margin: "0 auto", padding: "16px 34px 60px" }}>
+    <main style={{ maxWidth: 1900, margin: "0 auto", padding: "16px 26px 40px" }}>
       <Leyenda />
-      {orden.map((a, i) => <Banda key={a.id} auto={a} ultimo={i === orden.length - 1} />)}
+      {orden.length > 0 && (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(400px, 1fr))", gap: 12, marginTop: 14 }}>
+          {orden.map((a) => <Banda key={a.id} auto={a} />)}
+        </div>
+      )}
       {orden.length === 0 && <div style={{ textAlign: "center", color: T.dim, padding: "60px 0" }}>Sin autos en proceso.</div>}
-      <div style={{ marginTop: 40, display: "flex", alignItems: "baseline", gap: 14 }}>
+      <div style={{ marginTop: 32, display: "flex", alignItems: "baseline", gap: 14 }}>
         <span style={{ fontFamily: DISPLAY, fontSize: 11, letterSpacing: "0.34em", color: T.gold, textTransform: "uppercase" }}>Equipo</span>
         <span style={{ fontSize: 11, color: T.dim }}>en vivo, según la etapa de cada auto</span>
         <span style={{ flex: 1, height: 1, background: T.line }} />
@@ -514,7 +518,7 @@ function Leyenda() {
   );
 }
 
-function Banda({ auto, ultimo }) {
+function Banda({ auto }) {
   const dias = diasPara(auto.entregaFecha);
   const u = URG[urgencia(auto)];
   const et = HITOS[auto.hito];
@@ -523,96 +527,96 @@ function Banda({ auto, ultimo }) {
   const conKevlar = auto.kevlar.length > 0;
 
   return (
-    <section style={{ padding: "26px 0 24px", borderBottom: ultimo ? "none" : `1px solid ${T.line}` }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 24 }}>
+    <section style={{ background: T.panel, border: `1px solid ${T.line}`, borderRadius: 12, padding: "14px 16px" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 14 }}>
         <div style={{ minWidth: 0 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-            <h3 style={{ margin: 0, fontSize: 23, fontWeight: 700, letterSpacing: "-0.01em" }}>{nombreAuto(auto)} <span style={{ fontWeight: 400, color: T.mut, fontSize: 16 }}>{auto.anio}</span></h3>
-            <span style={{ fontFamily: DISPLAY, fontSize: 10, letterSpacing: "0.2em", color: T.gold, border: `1px solid ${T.goldSoft}`, borderRadius: 3, padding: "3px 8px" }}>{auto.bahia || "—"}</span>
-            {esG && <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.18em", textTransform: "uppercase", color: "#0a0a0b", background: T.gold, borderRadius: 3, padding: "4px 9px" }}>Garantía</span>}
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+            <h3 style={{ margin: 0, fontSize: 16.5, fontWeight: 700, letterSpacing: "-0.005em", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{nombreAuto(auto)} <span style={{ fontWeight: 400, color: T.mut, fontSize: 13 }}>{auto.anio}</span></h3>
+            <span style={{ fontFamily: DISPLAY, fontSize: 9, letterSpacing: "0.16em", color: T.gold, border: `1px solid ${T.goldSoft}`, borderRadius: 3, padding: "2px 6px", flexShrink: 0 }}>{auto.bahia || "—"}</span>
+            {esG && <span style={{ fontSize: 8.5, fontWeight: 700, letterSpacing: "0.14em", textTransform: "uppercase", color: "#0a0a0b", background: T.gold, borderRadius: 3, padding: "3px 6px", flexShrink: 0 }}>Garantía</span>}
           </div>
-          <div className="tnum" style={{ fontSize: 12, color: T.dim, marginTop: 5, letterSpacing: "0.05em" }}>{auto.placa} &nbsp;·&nbsp; {auto.orden}</div>
+          <div className="tnum" style={{ fontSize: 10.5, color: T.dim, marginTop: 3, letterSpacing: "0.03em" }}>{auto.placa} &nbsp;·&nbsp; {auto.orden}</div>
         </div>
         <div style={{ textAlign: "right", flexShrink: 0 }}>
-          <div style={{ display: "flex", alignItems: "baseline", gap: 12, justifyContent: "flex-end" }}>
-            <span style={{ fontSize: 10.5, letterSpacing: "0.2em", textTransform: "uppercase", color: u.c }}>
-              <span style={{ display: "inline-block", width: 6, height: 6, borderRadius: "50%", background: u.c, marginRight: 7, verticalAlign: "middle", animation: u.label === "Urgente" ? "breathe 1.6s ease-in-out infinite" : "none" }} />{u.label}
+          <div style={{ display: "flex", alignItems: "baseline", gap: 8, justifyContent: "flex-end" }}>
+            <span style={{ fontSize: 9, letterSpacing: "0.14em", textTransform: "uppercase", color: u.c }}>
+              <span style={{ display: "inline-block", width: 5, height: 5, borderRadius: "50%", background: u.c, marginRight: 5, verticalAlign: "middle", animation: u.label === "Urgente" ? "breathe 1.6s ease-in-out infinite" : "none" }} />{u.label}
             </span>
-            <span className="tnum" style={{ fontFamily: DISPLAY, fontSize: 42, color: u.c, lineHeight: 1 }}>{entregado(auto) ? "✓" : dias === null ? "—" : dias <= 0 ? "HOY" : dias + "d"}</span>
+            <span className="tnum" style={{ fontFamily: DISPLAY, fontSize: 26, color: u.c, lineHeight: 1 }}>{entregado(auto) ? "✓" : dias === null ? "—" : dias <= 0 ? "HOY" : dias + "d"}</span>
           </div>
-          <div style={{ fontSize: 12.5, color: T.mut, marginTop: 4, textTransform: "capitalize", letterSpacing: "0.03em" }}>{fechaCorta(auto.entregaFecha)}{hora12(auto.entregaHora) ? " · " + hora12(auto.entregaHora) : ""}</div>
+          <div style={{ fontSize: 10.5, color: T.mut, marginTop: 2, textTransform: "capitalize", letterSpacing: "0.02em" }}>{fechaCorta(auto.entregaFecha)}{hora12(auto.entregaHora) ? " · " + hora12(auto.entregaHora) : ""}</div>
         </div>
       </div>
 
-      <div style={{ marginTop: 18 }}>
+      <div style={{ marginTop: 10 }}>
         {esG ? (
           <div>
-            <div style={{ fontSize: 10, letterSpacing: "0.16em", color: T.dim, textTransform: "uppercase", marginBottom: 5 }}>Motivo de garantía</div>
-            <div style={{ fontSize: 15, color: T.ink, fontWeight: 600, lineHeight: 1.4 }}>{auto.motivo || "—"}</div>
+            <div style={{ fontSize: 9, letterSpacing: "0.14em", color: T.dim, textTransform: "uppercase", marginBottom: 3 }}>Motivo de garantía</div>
+            <div style={{ fontSize: 12.5, color: T.ink, fontWeight: 600, lineHeight: 1.35 }}>{auto.motivo || "—"}</div>
           </div>
         ) : (
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px 40px" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "4px 20px" }}>
             <div>
-              <div style={{ fontSize: 10, letterSpacing: "0.16em", color: T.dim, textTransform: "uppercase", marginBottom: 8 }}>Vidrios</div>
+              <div style={{ fontSize: 9, letterSpacing: "0.14em", color: T.dim, textTransform: "uppercase", marginBottom: 4 }}>Vidrios</div>
               {vidriosDe(auto).map((p) => {
                 const plus = auto.glass[p] === "Viking Plus";
                 const cod = codigoVidrio(auto.orden, p);
                 return (
-                  <div key={p} style={{ display: "flex", alignItems: "baseline", gap: 10, padding: "3px 0" }}>
-                    <span style={{ width: 6, height: 6, borderRadius: "50%", background: plus ? T.gold : T.blue, flexShrink: 0, transform: "translateY(-1px)" }} />
-                    <span style={{ fontSize: 13.5, color: T.ink, minWidth: 128 }}>{p}</span>
-                    {cod && <span className="tnum" style={{ fontSize: 13, fontWeight: 700, letterSpacing: "0.03em", color: T.mut, minWidth: 84 }}>{cod}</span>}
-                    <span style={{ fontSize: 13, fontWeight: 600, color: plus ? T.gold : T.blue }}>{auto.glass[p]}</span>
-                    {auto.ahumado[p] && <span style={{ fontSize: 11, letterSpacing: "0.08em", textTransform: "uppercase", color: T.mut, border: `1px solid ${T.line2}`, borderRadius: 4, padding: "1px 6px" }}>ahumado</span>}
+                  <div key={p} style={{ display: "flex", alignItems: "baseline", gap: 6, padding: "1.5px 0" }}>
+                    <span style={{ width: 5, height: 5, borderRadius: "50%", background: plus ? T.gold : T.blue, flexShrink: 0, transform: "translateY(-1px)" }} />
+                    <span style={{ fontSize: 11, color: T.ink, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{p}</span>
+                    {cod && <span className="tnum" style={{ fontSize: 10.5, fontWeight: 700, color: T.mut, flexShrink: 0 }}>{cod}</span>}
+                    <span style={{ fontSize: 11, fontWeight: 600, color: plus ? T.gold : T.blue, flexShrink: 0 }}>{plus ? "Plus" : "Vik"}</span>
+                    {auto.ahumado[p] && <span style={{ fontSize: 9, letterSpacing: "0.04em", textTransform: "uppercase", color: T.mut, border: `1px solid ${T.line2}`, borderRadius: 3, padding: "0px 4px", flexShrink: 0 }}>ah</span>}
                   </div>
                 );
               })}
             </div>
             <div>
-              <div style={{ fontSize: 10, letterSpacing: "0.16em", color: T.dim, textTransform: "uppercase", marginBottom: 8 }}>Kevlar</div>
+              <div style={{ fontSize: 9, letterSpacing: "0.14em", color: T.dim, textTransform: "uppercase", marginBottom: 4 }}>Kevlar</div>
               {auto.kevlar.length ? auto.kevlar.map((z) => (
-                <div key={z} style={{ display: "flex", alignItems: "baseline", gap: 10, padding: "3px 0" }}>
-                  <span style={{ width: 6, height: 6, borderRadius: "50%", background: T.teal, flexShrink: 0, transform: "translateY(-1px)" }} />
-                  <span style={{ fontSize: 13.5, color: T.ink }}>{z}</span>
+                <div key={z} style={{ display: "flex", alignItems: "baseline", gap: 6, padding: "1.5px 0" }}>
+                  <span style={{ width: 5, height: 5, borderRadius: "50%", background: T.teal, flexShrink: 0, transform: "translateY(-1px)" }} />
+                  <span style={{ fontSize: 11, color: T.ink, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{z}</span>
                 </div>
-              )) : <div style={{ fontSize: 13.5, color: T.dim, fontStyle: "italic" }}>Sin Kevlar</div>}
-              {auto.paquete.codigos.length > 0 && <div className="tnum" style={{ fontSize: 11.5, color: T.dim, letterSpacing: "0.05em", marginTop: 12 }}>{auto.paquete.codigos.join("  ·  ")}</div>}
+              )) : <div style={{ fontSize: 11, color: T.dim, fontStyle: "italic" }}>Sin Kevlar</div>}
+              {auto.paquete.codigos.length > 0 && <div className="tnum" style={{ fontSize: 10, color: T.dim, marginTop: 6 }}>{auto.paquete.codigos.join(" · ")}</div>}
             </div>
           </div>
         )}
       </div>
 
-      <div style={{ marginTop: 18 }}>
-        <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 9 }}>
-          <span style={{ fontFamily: DISPLAY, fontSize: 13, letterSpacing: "0.14em", color: T.gold, textTransform: "uppercase" }}>{et.n}</span>
-          <span style={{ fontSize: 11.5, color: T.mut }}>{et.ow}</span>
-          <span className="tnum" style={{ fontSize: 11, color: T.dim, marginLeft: "auto" }}>{auto.hito + 1} / {HITOS.length}</span>
+      <div style={{ marginTop: 10, paddingTop: 8, borderTop: `1px solid ${T.line}` }}>
+        <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 5 }}>
+          <span style={{ fontFamily: DISPLAY, fontSize: 10.5, letterSpacing: "0.1em", color: T.gold, textTransform: "uppercase" }}>{et.n}</span>
+          <span style={{ fontSize: 10, color: T.mut }}>{et.ow}</span>
+          <span className="tnum" style={{ fontSize: 9.5, color: T.dim, marginLeft: "auto" }}>{auto.hito + 1}/{HITOS.length}</span>
         </div>
-        <div style={{ position: "relative", height: 12, marginBottom: conKevlar ? 12 : 0 }}>
-          <div style={{ position: "absolute", top: 5, left: 0, right: 0, height: 2, background: T.line2, borderRadius: 1 }} />
-          <div style={{ position: "absolute", top: 5, left: 0, width: pct + "%", height: 2, background: `linear-gradient(90deg, ${T.goldSoft}, ${T.gold})`, borderRadius: 1 }} />
+        <div style={{ position: "relative", height: 8, marginBottom: conKevlar ? 8 : 0 }}>
+          <div style={{ position: "absolute", top: 3, left: 0, right: 0, height: 2, background: T.line2, borderRadius: 1 }} />
+          <div style={{ position: "absolute", top: 3, left: 0, width: pct + "%", height: 2, background: `linear-gradient(90deg, ${T.goldSoft}, ${T.gold})`, borderRadius: 1 }} />
           {HITOS.map((s, i) => {
             const x = (i / (HITOS.length - 1)) * 100, done = i < auto.hito, now = i === auto.hito;
-            return <span key={s.n} title={s.n} style={{ position: "absolute", top: now ? 0 : 2.5, left: `calc(${x}% - ${now ? 6 : 3.5}px)`, width: now ? 12 : 7, height: now ? 12 : 7, borderRadius: "50%", background: now ? T.gold : done ? T.goldSoft : T.line2, boxShadow: now ? `0 0 10px ${T.gold}` : "none" }} />;
+            return <span key={s.n} title={s.n} style={{ position: "absolute", top: now ? 0 : 1.5, left: `calc(${x}% - ${now ? 4 : 2.5}px)`, width: now ? 8 : 5, height: now ? 8 : 5, borderRadius: "50%", background: now ? T.gold : done ? T.goldSoft : T.line2, boxShadow: now ? `0 0 8px ${T.gold}` : "none" }} />;
           })}
         </div>
         {conKevlar && (
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <span style={{ fontSize: 10, letterSpacing: "0.14em", color: T.teal, textTransform: "uppercase", width: 52 }}>Kevlar</span>
-            <div style={{ position: "relative", flex: 1, height: 8 }}>
-              <div style={{ position: "absolute", top: 3, left: 0, right: 0, height: 2, background: T.line2, borderRadius: 1 }} />
-              <div style={{ position: "absolute", top: 3, left: 0, width: (auto.kevlarHito / 3) * 100 + "%", height: 2, background: T.teal, borderRadius: 1 }} />
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <span style={{ fontSize: 9, letterSpacing: "0.1em", color: T.teal, textTransform: "uppercase", width: 42, flexShrink: 0 }}>Kevlar</span>
+            <div style={{ position: "relative", flex: 1, height: 6 }}>
+              <div style={{ position: "absolute", top: 2, left: 0, right: 0, height: 2, background: T.line2, borderRadius: 1 }} />
+              <div style={{ position: "absolute", top: 2, left: 0, width: (auto.kevlarHito / 3) * 100 + "%", height: 2, background: T.teal, borderRadius: 1 }} />
               {[1, 2, 3].map((i) => {
                 const x = (i / 3) * 100;
-                return <span key={i} style={{ position: "absolute", top: 1, left: `calc(${x}% - 3px)`, width: 6, height: 6, borderRadius: "50%", background: i <= auto.kevlarHito ? T.teal : T.line2 }} />;
+                return <span key={i} style={{ position: "absolute", top: 0.5, left: `calc(${x}% - 2.5px)`, width: 5, height: 5, borderRadius: "50%", background: i <= auto.kevlarHito ? T.teal : T.line2 }} />;
               })}
             </div>
-            <span style={{ fontSize: 11, color: auto.kevlarHito >= 3 ? T.teal : T.mut }}>{KEVLAR_HITOS[auto.kevlarHito]}</span>
+            <span style={{ fontSize: 9.5, color: auto.kevlarHito >= 3 ? T.teal : T.mut, flexShrink: 0 }}>{KEVLAR_HITOS[auto.kevlarHito]}</span>
           </div>
         )}
       </div>
 
-      {auto.notas && <div style={{ marginTop: 13, fontSize: 12.5, color: T.dim, fontStyle: "italic" }}>{auto.notas}</div>}
+      {auto.notas && <div style={{ marginTop: 8, fontSize: 10.5, color: T.dim, fontStyle: "italic", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }} title={auto.notas}>{auto.notas}</div>}
     </section>
   );
 }
