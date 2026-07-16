@@ -362,7 +362,7 @@ function VistaTV({ autos }) {
   const orden = [...autos].filter((a) => !entregado(a)).sort((a, b) => claveOrden(a) - claveOrden(b));
 
   /* Slideshow: 3 autos grandes por pantalla, rota cada 8 s (urgentes primero por el orden). */
-  const POR_SLIDE = 3, SEG = 8000;
+  const POR_SLIDE = 2, SEG = 8000;
   const grupos = [];
   for (let i = 0; i < orden.length; i += POR_SLIDE) grupos.push(orden.slice(i, i + POR_SLIDE));
   const totalSlides = Math.max(1, grupos.length);
@@ -395,7 +395,7 @@ function VistaTV({ autos }) {
         <Leyenda />
       </div>
       {orden.length > 0 && (
-        <div style={{ display: "grid", gridTemplateColumns: `repeat(${Math.min(3, grupoActual.length)}, 1fr)`, gap: 18, marginTop: 16 }}>
+        <div style={{ display: "grid", gridTemplateColumns: `repeat(${Math.min(2, grupoActual.length)}, 1fr)`, gap: 20, marginTop: 16 }}>
           {grupoActual.map((a) => <Banda key={a.id} auto={a} />)}
         </div>
       )}
@@ -557,7 +557,7 @@ function Banda({ auto }) {
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 14 }}>
         <div style={{ minWidth: 0 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-            <h3 style={{ margin: 0, fontSize: 16.5, fontWeight: 700, letterSpacing: "-0.005em", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{nombreAuto(auto)} <span style={{ fontWeight: 400, color: T.mut, fontSize: 13 }}>{auto.anio}</span></h3>
+            <h3 style={{ margin: 0, fontSize: 19, fontWeight: 700, letterSpacing: "-0.01em", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{nombreAuto(auto)} <span style={{ fontWeight: 400, color: T.mut, fontSize: 14 }}>{auto.anio}</span></h3>
             <span style={{ fontFamily: DISPLAY, fontSize: 9, letterSpacing: "0.16em", color: T.gold, border: `1px solid ${T.goldSoft}`, borderRadius: 3, padding: "2px 6px", flexShrink: 0 }}>{auto.bahia || "—"}</span>
             {esG && <span style={{ fontSize: 8.5, fontWeight: 700, letterSpacing: "0.14em", textTransform: "uppercase", color: "#0a0a0b", background: T.gold, borderRadius: 3, padding: "3px 6px", flexShrink: 0 }}>Garantía</span>}
           </div>
@@ -568,7 +568,7 @@ function Banda({ auto }) {
             <span style={{ fontSize: 9, letterSpacing: "0.14em", textTransform: "uppercase", color: u.c }}>
               <span style={{ display: "inline-block", width: 5, height: 5, borderRadius: "50%", background: u.c, marginRight: 5, verticalAlign: "middle", animation: u.label === "Urgente" ? "breathe 1.6s ease-in-out infinite" : "none" }} />{u.label}
             </span>
-            <span className="tnum" style={{ fontFamily: DISPLAY, fontSize: 26, color: u.c, lineHeight: 1 }}>{entregado(auto) ? "✓" : dias === null ? "—" : dias <= 0 ? "HOY" : dias + "d"}</span>
+            <span className="tnum" style={{ fontFamily: DISPLAY, fontSize: 34, color: u.c, lineHeight: 1 }}>{entregado(auto) ? "✓" : dias === null ? "—" : dias <= 0 ? "HOY" : dias + "d"}</span>
           </div>
           <div style={{ fontSize: 10.5, color: T.mut, marginTop: 2, textTransform: "capitalize", letterSpacing: "0.02em" }}>{fechaCorta(auto.entregaFecha)}{hora12(auto.entregaHora) ? " · " + hora12(auto.entregaHora) : ""}</div>
         </div>
@@ -588,12 +588,12 @@ function Banda({ auto }) {
                 const plus = auto.glass[p] === "Viking Plus";
                 const cod = codigoVidrio(auto.orden, p);
                 return (
-                  <div key={p} style={{ display: "flex", alignItems: "baseline", gap: 6, padding: "1.5px 0" }}>
-                    <span style={{ width: 5, height: 5, borderRadius: "50%", background: plus ? T.gold : T.blue, flexShrink: 0, transform: "translateY(-1px)" }} />
-                    <span style={{ fontSize: 11, color: T.ink, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{p}</span>
-                    {cod && <span className="tnum" style={{ fontSize: 10.5, fontWeight: 700, color: T.mut, flexShrink: 0 }}>{cod}</span>}
-                    <span style={{ fontSize: 11, fontWeight: 600, color: plus ? T.gold : T.blue, flexShrink: 0 }}>{plus ? "Plus" : "Vik"}</span>
-                    {auto.ahumado[p] && <span style={{ fontSize: 9, letterSpacing: "0.04em", textTransform: "uppercase", color: T.mut, border: `1px solid ${T.line2}`, borderRadius: 3, padding: "0px 4px", flexShrink: 0 }}>ah</span>}
+                  <div key={p} style={{ display: "flex", alignItems: "baseline", gap: 8, padding: "2.5px 0" }}>
+                    <span style={{ width: 6, height: 6, borderRadius: "50%", background: plus ? T.gold : T.blue, flexShrink: 0, transform: "translateY(-1px)" }} />
+                    <span style={{ fontSize: 13, color: T.ink, minWidth: 122 }}>{p}</span>
+                    {cod && <span className="tnum" style={{ fontSize: 12.5, fontWeight: 700, color: T.mut, minWidth: 78, flexShrink: 0 }}>{cod}</span>}
+                    <span style={{ fontSize: 12.5, fontWeight: 600, color: plus ? T.gold : T.blue, flexShrink: 0 }}>{auto.glass[p]}</span>
+                    {auto.ahumado[p] && <span style={{ fontSize: 10, letterSpacing: "0.06em", textTransform: "uppercase", color: T.mut, border: `1px solid ${T.line2}`, borderRadius: 4, padding: "1px 5px", flexShrink: 0 }}>ahumado</span>}
                   </div>
                 );
               })}
