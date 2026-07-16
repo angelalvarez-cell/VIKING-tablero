@@ -358,33 +358,22 @@ export default function TableroViking() {
 const ROLES = ["Vendedor", "Técnico Digital", "Vidrios", "Líder", "Kevlar"];
 
 function VistaTV({ autos }) {
-  /* Auto-escalado a pantalla (modo TV): mide el contenido y lo encoge lo justo
-     para que TODO quepa sin scroll, sin importar la resolución o rarezas del
-     navegador de la tele. Con pocos autos no encoge nada. */
-  const contRef = useRef(null);
-  const [ajuste, setAjuste] = useState({ f: 1, alto: null });
-  useEffect(() => {
-    const reset = () => setAjuste({ f: 1, alto: null });
-    window.addEventListener("resize", reset);
-    const t = setTimeout(reset, 900); // re-mide tras cargar fuentes
-    return () => { window.removeEventListener("resize", reset); clearTimeout(t); };
-  }, []);
-  useLayoutEffect(() => { setAjuste({ f: 1, alto: null }); }, [autos]);
-  useLayoutEffect(() => {
-    if (ajuste.f !== 1) return;
-    const el = contRef.current; if (!el) return;
-    const top = el.getBoundingClientRect().top;
-    const disponible = window.innerHeight - top - 10;
-    const natural = el.scrollHeight;
-    if (natural > disponible && disponible > 100) {
-      const f = Math.max(0.5, disponible / natural);
-      setAjuste({ f, alto: Math.floor(natural * f) });
-    }
-  }, [ajuste, autos]);
-  const escala = ajuste.f;
-
   const claveOrden = (a) => { const d = diasPara(a.entregaFecha); return d === null ? Infinity : d; };
   const orden = [...autos].filter((a) => !entregado(a)).sort((a, b) => claveOrden(a) - claveOrden(b));
+
+  /* Slideshow: 3 autos grandes por pantalla, rota cada 8 s (urgentes primero por el orden). */
+  const POR_SLIDE = 3, SEG = 8000;
+  const grupos = [];
+  for (let i = 0; i < orden.length; i += POR_SLIDE) grupos.push(orden.slice(i, i + POR_SLIDE));
+  const totalSlides = Math.max(1, grupos.length);
+  const [slide, setSlide] = useState(0);
+  useEffect(() => { if (slide > totalSlides - 1) setSlide(0); }, [totalSlides, slide]);
+  useEffect(() => {
+    if (totalSlides <= 1) return;
+    const t = setInterval(() => setSlide((s) => (s + 1) % totalSlides), SEG);
+    return () => clearInterval(t);
+  }, [totalSlides]);
+  const grupoActual = grupos[Math.min(slide, totalSlides - 1)] || [];
 
   // Equipo deducido de los hitos: para cada rol, qué autos tiene en sus manos (paso siguiente).
   const cola = {};
@@ -401,16 +390,27 @@ function VistaTV({ autos }) {
   });
 
   return (
-    <main style={{ maxWidth: 1900, margin: "0 auto", padding: "12px 26px 10px", overflow: "hidden" }}>
-      <div ref={contRef} style={{ transform: escala < 1 ? `scale(${escala})` : "none", transformOrigin: "top left", width: escala < 1 ? (100 / escala).toFixed(2) + "%" : "100%", height: ajuste.alto ? ajuste.alto + "px" : "auto" }}>
-      <Leyenda />
+    <main style={{ maxWidth: 1900, margin: "0 auto", padding: "16px 34px 30px" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+        <Leyenda />
+      </div>
       {orden.length > 0 && (
-        <div style={{ display: "grid", gridTemplateColumns: `repeat(${Math.min(3, orden.length)}, 1fr)`, gap: 12, marginTop: 14 }}>
-          {orden.map((a) => <Banda key={a.id} auto={a} />)}
+        <div style={{ display: "grid", gridTemplateColumns: `repeat(${Math.min(3, grupoActual.length)}, 1fr)`, gap: 18, marginTop: 16 }}>
+          {grupoActual.map((a) => <Banda key={a.id} auto={a} />)}
         </div>
       )}
       {orden.length === 0 && <div style={{ textAlign: "center", color: T.dim, padding: "60px 0" }}>Sin autos en proceso.</div>}
-      <div style={{ marginTop: 20, display: "flex", alignItems: "baseline", gap: 14 }}>
+
+      {totalSlides > 1 && (
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, marginTop: 20 }}>
+          {grupos.map((_, i) => (
+            <span key={i} style={{ width: i === slide ? 22 : 7, height: 7, borderRadius: 4, background: i === slide ? T.gold : T.line2, transition: "width .3s ease, background .3s ease" }} />
+          ))}
+          <span style={{ fontSize: 11, color: T.dim, marginLeft: 10, letterSpacing: "0.05em" }}>{orden.length} autos · grupo {slide + 1}/{totalSlides}</span>
+        </div>
+      )}
+
+      <div style={{ marginTop: 24, display: "flex", alignItems: "baseline", gap: 14 }}>
         <span style={{ fontFamily: DISPLAY, fontSize: 11, letterSpacing: "0.34em", color: T.gold, textTransform: "uppercase" }}>Equipo</span>
         <span style={{ fontSize: 11, color: T.dim }}>en vivo, según la etapa de cada auto</span>
         <span style={{ flex: 1, height: 1, background: T.line }} />
@@ -434,7 +434,6 @@ function VistaTV({ autos }) {
             </div>
           );
         })}
-      </div>
       </div>
     </main>
   );
