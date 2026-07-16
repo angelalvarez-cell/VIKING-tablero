@@ -375,6 +375,29 @@ function VistaTV({ autos }) {
   }, [totalSlides]);
   const grupoActual = grupos[Math.min(slide, totalSlides - 1)] || [];
 
+  /* Auto-ajuste suave: si el par de coches queda un poco alto para la pantalla,
+     encoge lo mínimo para que TODO quepa sin scroll (con 2 tarjetas casi no se nota). */
+  const contRef = useRef(null);
+  const [ajuste, setAjuste] = useState({ f: 1, alto: null });
+  useEffect(() => {
+    const reset = () => setAjuste({ f: 1, alto: null });
+    window.addEventListener("resize", reset);
+    const t = setTimeout(reset, 900);
+    return () => { window.removeEventListener("resize", reset); clearTimeout(t); };
+  }, []);
+  useLayoutEffect(() => { setAjuste({ f: 1, alto: null }); }, [slide, autos]);
+  useLayoutEffect(() => {
+    if (ajuste.f !== 1) return;
+    const el = contRef.current; if (!el) return;
+    const disponible = window.innerHeight - el.getBoundingClientRect().top - 24;
+    const natural = el.scrollHeight;
+    if (natural > disponible && disponible > 100) {
+      const f = Math.max(0.7, disponible / natural);
+      setAjuste({ f, alto: Math.floor(natural * f) });
+    }
+  }, [ajuste, slide, autos]);
+  const escala = ajuste.f;
+
   // Equipo deducido de los hitos: para cada rol, qué autos tiene en sus manos (paso siguiente).
   const cola = {};
   ROLES.forEach((r) => (cola[r] = []));
@@ -390,12 +413,13 @@ function VistaTV({ autos }) {
   });
 
   return (
-    <main style={{ maxWidth: 1900, margin: "0 auto", padding: "16px 34px 30px" }}>
+    <main style={{ maxWidth: 1900, margin: "0 auto", padding: "14px 34px 6px", overflow: "hidden" }}>
+      <div ref={contRef} style={{ transform: escala < 1 ? `scale(${escala})` : "none", transformOrigin: "top left", width: escala < 1 ? (100 / escala).toFixed(2) + "%" : "100%", height: ajuste.alto ? ajuste.alto + "px" : "auto" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
         <Leyenda />
       </div>
       {orden.length > 0 && (
-        <div style={{ display: "grid", gridTemplateColumns: `repeat(${Math.min(2, grupoActual.length)}, 1fr)`, gap: 20, marginTop: 16 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 14, marginTop: 14 }}>
           {grupoActual.map((a) => <Banda key={a.id} auto={a} />)}
         </div>
       )}
@@ -434,6 +458,7 @@ function VistaTV({ autos }) {
             </div>
           );
         })}
+      </div>
       </div>
     </main>
   );
@@ -580,36 +605,46 @@ function Banda({ auto }) {
             <div style={{ fontSize: 9, letterSpacing: "0.14em", color: T.dim, textTransform: "uppercase", marginBottom: 3 }}>Motivo de garantía</div>
             <div style={{ fontSize: 12.5, color: T.ink, fontWeight: 600, lineHeight: 1.35 }}>{auto.motivo || "—"}</div>
           </div>
-        ) : (
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "4px 20px" }}>
-            <div>
-              <div style={{ fontSize: 9, letterSpacing: "0.14em", color: T.dim, textTransform: "uppercase", marginBottom: 4 }}>Vidrios</div>
-              {vidriosDe(auto).map((p) => {
-                const plus = auto.glass[p] === "Viking Plus";
-                const cod = codigoVidrio(auto.orden, p);
-                return (
-                  <div key={p} style={{ display: "flex", alignItems: "baseline", gap: 8, padding: "2.5px 0" }}>
-                    <span style={{ width: 6, height: 6, borderRadius: "50%", background: plus ? T.gold : T.blue, flexShrink: 0, transform: "translateY(-1px)" }} />
-                    <span style={{ fontSize: 13, color: T.ink, minWidth: 122 }}>{p}</span>
-                    {cod && <span className="tnum" style={{ fontSize: 12.5, fontWeight: 700, color: T.mut, minWidth: 78, flexShrink: 0 }}>{cod}</span>}
-                    <span style={{ fontSize: 12.5, fontWeight: 600, color: plus ? T.gold : T.blue, flexShrink: 0 }}>{auto.glass[p]}</span>
-                    {auto.ahumado[p] && <span style={{ fontSize: 10, letterSpacing: "0.06em", textTransform: "uppercase", color: T.mut, border: `1px solid ${T.line2}`, borderRadius: 4, padding: "1px 5px", flexShrink: 0 }}>ahumado</span>}
+        ) : (() => {
+          const vid = vidriosDe(auto);
+          const mitad = Math.ceil(vid.length / 2);
+          const cols = [vid.slice(0, mitad), vid.slice(mitad)];
+          const lineaVidrio = (p) => {
+            const plus = auto.glass[p] === "Viking Plus";
+            const cod = codigoVidrio(auto.orden, p);
+            return (
+              <div key={p} style={{ display: "flex", alignItems: "baseline", gap: 8, padding: "2px 0" }}>
+                <span style={{ width: 6, height: 6, borderRadius: "50%", background: plus ? T.gold : T.blue, flexShrink: 0, transform: "translateY(-1px)" }} />
+                <span style={{ fontSize: 13, color: T.ink, minWidth: 118 }}>{p}</span>
+                {cod && <span className="tnum" style={{ fontSize: 12.5, fontWeight: 700, color: T.mut, minWidth: 76, flexShrink: 0 }}>{cod}</span>}
+                <span style={{ fontSize: 12.5, fontWeight: 600, color: plus ? T.gold : T.blue, flexShrink: 0 }}>{auto.glass[p]}</span>
+                {auto.ahumado[p] && <span style={{ fontSize: 10, letterSpacing: "0.06em", textTransform: "uppercase", color: T.mut, border: `1px solid ${T.line2}`, borderRadius: 4, padding: "1px 5px", flexShrink: 0 }}>ahumado</span>}
+              </div>
+            );
+          };
+          return (
+            <div style={{ display: "grid", gridTemplateColumns: "1.3fr 1.3fr 1fr", gap: "4px 28px" }}>
+              <div>
+                <div style={{ fontSize: 9, letterSpacing: "0.14em", color: T.dim, textTransform: "uppercase", marginBottom: 4 }}>Vidrios</div>
+                {cols[0].map(lineaVidrio)}
+              </div>
+              <div>
+                <div style={{ fontSize: 9, letterSpacing: "0.14em", color: T.dim, textTransform: "uppercase", marginBottom: 4, visibility: "hidden" }}>·</div>
+                {cols[1].map(lineaVidrio)}
+              </div>
+              <div>
+                <div style={{ fontSize: 9, letterSpacing: "0.14em", color: T.dim, textTransform: "uppercase", marginBottom: 4 }}>Kevlar</div>
+                {auto.kevlar.length ? auto.kevlar.map((z) => (
+                  <div key={z} style={{ display: "flex", alignItems: "baseline", gap: 6, padding: "2px 0" }}>
+                    <span style={{ width: 5, height: 5, borderRadius: "50%", background: T.teal, flexShrink: 0, transform: "translateY(-1px)" }} />
+                    <span style={{ fontSize: 12.5, color: T.ink }}>{z}</span>
                   </div>
-                );
-              })}
+                )) : <div style={{ fontSize: 12, color: T.dim, fontStyle: "italic" }}>Sin Kevlar</div>}
+                {auto.paquete.codigos.length > 0 && <div className="tnum" style={{ fontSize: 10.5, color: T.dim, marginTop: 6 }}>{auto.paquete.codigos.join(" · ")}</div>}
+              </div>
             </div>
-            <div>
-              <div style={{ fontSize: 9, letterSpacing: "0.14em", color: T.dim, textTransform: "uppercase", marginBottom: 4 }}>Kevlar</div>
-              {auto.kevlar.length ? auto.kevlar.map((z) => (
-                <div key={z} style={{ display: "flex", alignItems: "baseline", gap: 6, padding: "1.5px 0" }}>
-                  <span style={{ width: 5, height: 5, borderRadius: "50%", background: T.teal, flexShrink: 0, transform: "translateY(-1px)" }} />
-                  <span style={{ fontSize: 11, color: T.ink, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{z}</span>
-                </div>
-              )) : <div style={{ fontSize: 11, color: T.dim, fontStyle: "italic" }}>Sin Kevlar</div>}
-              {auto.paquete.codigos.length > 0 && <div className="tnum" style={{ fontSize: 10, color: T.dim, marginTop: 6 }}>{auto.paquete.codigos.join(" · ")}</div>}
-            </div>
-          </div>
-        )}
+          );
+        })()}
       </div>
 
       <div style={{ marginTop: 10, paddingTop: 8, borderTop: `1px solid ${T.line}` }}>
