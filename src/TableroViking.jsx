@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useLayoutEffect, useRef, useCallback } from "react";
 
 /* =====================================================================
    CONEXIÓN — pega aquí la URL /exec de tu Apps Script (como en el Cotizador).
@@ -358,6 +358,31 @@ export default function TableroViking() {
 const ROLES = ["Vendedor", "Técnico Digital", "Vidrios", "Líder", "Kevlar"];
 
 function VistaTV({ autos }) {
+  /* Auto-escalado a pantalla (modo TV): mide el contenido y lo encoge lo justo
+     para que TODO quepa sin scroll, sin importar la resolución o rarezas del
+     navegador de la tele. Con pocos autos no encoge nada. */
+  const contRef = useRef(null);
+  const [ajuste, setAjuste] = useState({ f: 1, alto: null });
+  useEffect(() => {
+    const reset = () => setAjuste({ f: 1, alto: null });
+    window.addEventListener("resize", reset);
+    const t = setTimeout(reset, 900); // re-mide tras cargar fuentes
+    return () => { window.removeEventListener("resize", reset); clearTimeout(t); };
+  }, []);
+  useLayoutEffect(() => { setAjuste({ f: 1, alto: null }); }, [autos]);
+  useLayoutEffect(() => {
+    if (ajuste.f !== 1) return;
+    const el = contRef.current; if (!el) return;
+    const top = el.getBoundingClientRect().top;
+    const disponible = window.innerHeight - top - 10;
+    const natural = el.scrollHeight;
+    if (natural > disponible && disponible > 100) {
+      const f = Math.max(0.5, disponible / natural);
+      setAjuste({ f, alto: Math.floor(natural * f) });
+    }
+  }, [ajuste, autos]);
+  const escala = ajuste.f;
+
   const claveOrden = (a) => { const d = diasPara(a.entregaFecha); return d === null ? Infinity : d; };
   const orden = [...autos].filter((a) => !entregado(a)).sort((a, b) => claveOrden(a) - claveOrden(b));
 
@@ -376,7 +401,8 @@ function VistaTV({ autos }) {
   });
 
   return (
-    <main style={{ maxWidth: 1900, margin: "0 auto", padding: "16px 26px 40px" }}>
+    <main style={{ maxWidth: 1900, margin: "0 auto", padding: "12px 26px 10px", overflow: "hidden" }}>
+      <div ref={contRef} style={{ transform: escala < 1 ? `scale(${escala})` : "none", transformOrigin: "top left", width: escala < 1 ? (100 / escala).toFixed(2) + "%" : "100%", height: ajuste.alto ? ajuste.alto + "px" : "auto" }}>
       <Leyenda />
       {orden.length > 0 && (
         <div style={{ display: "grid", gridTemplateColumns: `repeat(${Math.min(3, orden.length)}, 1fr)`, gap: 12, marginTop: 14 }}>
@@ -384,7 +410,7 @@ function VistaTV({ autos }) {
         </div>
       )}
       {orden.length === 0 && <div style={{ textAlign: "center", color: T.dim, padding: "60px 0" }}>Sin autos en proceso.</div>}
-      <div style={{ marginTop: 32, display: "flex", alignItems: "baseline", gap: 14 }}>
+      <div style={{ marginTop: 20, display: "flex", alignItems: "baseline", gap: 14 }}>
         <span style={{ fontFamily: DISPLAY, fontSize: 11, letterSpacing: "0.34em", color: T.gold, textTransform: "uppercase" }}>Equipo</span>
         <span style={{ fontSize: 11, color: T.dim }}>en vivo, según la etapa de cada auto</span>
         <span style={{ flex: 1, height: 1, background: T.line }} />
@@ -408,6 +434,7 @@ function VistaTV({ autos }) {
             </div>
           );
         })}
+      </div>
       </div>
     </main>
   );
