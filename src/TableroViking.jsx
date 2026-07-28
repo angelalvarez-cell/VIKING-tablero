@@ -53,6 +53,11 @@ const vidriosDe = (a) => {
   const extra = Object.keys(a.glass || {}).filter((p) => !POS_CODE[p]);
   return [...conocidos, ...extra];
 };
+/* Claves de posición de los vidrios tratados, en el orden oficial, separadas por coma.
+   Es lo que se vuelca a la columna VIDRIOS de la hoja AUTOS (la lee Autoclave Viking para
+   mostrarle al operador SOLO los vidrios de esa orden). Va la clave sola, sin el nº de orden:
+   ej. "PB, LDI, LDD, ALDI, ALDD, LTI, LTD, ALTI, ALTD, MED". */
+const clavesVidrios = (a) => GLASS_POSITIONS.filter((p) => a.glass[p]).map((p) => POS_CODE[p]).join(", ");
 
 
 // Base de vehículos — IDÉNTICA al Cotizador Viking (objeto BRANDS).
@@ -136,7 +141,18 @@ const HITOS = [
 const HITO_DESMONTAJE = 1; // el carril de Kevlar se desbloquea al llegar aquí
 const KEVLAR_HITOS = ["Sin empezar", "Plantillas", "Instalando", "Kevlar listo"];
 const KEVLAR_SIG = ["Empecé plantillas", "Instalando", "Kevlar listo"];
-const PUESTOS = ["Vendedor", "Líder de Taller", "Técnico Digital", "Vidrios 1", "Vidrios 2", "Kevlar", "Asistente", "Pintor"];
+/* Equipo real de Viking · San Jerónimo (Ficha de Puestos GAV, jul 2026).
+   Cada rol del tablero se mapea a su(s) persona(s). El "Vendedor" VARÍA por unidad,
+   así que no se fija aquí — se elige en el crew de cada auto. */
+const EQUIPO = {
+  "Vendedor": [],                          // varía; se asigna por auto
+  "Técnico Digital": ["Antonio"],          // Antonio Domínguez — Técnico de CNC (escaneo + corte)
+  "Vidrios": ["Jonathan", "César"],        // Jonathan Licona y César Omar Rodríguez — Ayudantes de Viking
+  "Líder": ["Fernando"],                   // Fernando García Guillén — Jefe de Viking
+  "Kevlar": ["Francisco", "Diego"],        // Francisco Coronado (Blindador) + Diego Ortiz — carril propio
+};
+/* Personas asignables al crew de un auto (incluye posibles vendedores, que varían). */
+const PERSONAS = ["Fernando", "Antonio", "Jonathan", "César", "Francisco", "Diego", "Mónica", "Jesús L.", "Javier"];
 
 /* ================= Datos DEMO (solo sin backend) ================= */
 const AUTOS_DEMO = [
@@ -208,34 +224,88 @@ function resumenAhumado(a) {
   return "Ahumado parcial";
 }
 
-/* ===== Estimador de carga → fecha SUGERIDA (rústico; se afina con tiempos de campo) =====
-   Cada auto pesa en "autos-equivalentes": 4 laterales repetido ≈ 1.0. El taller despacha
-   ~2.8/semana (doc de Capacidad). La fecha suma la carga de los autos adelante en la fila. */
-const CAP_SEMANA = 2.8;
-function pesoTotal(a) {
-  const nVidrios = Object.keys(a.glass || {}).length;
-  let w = 0.4 + 0.15 * nVidrios;                 // 4 laterales ≈ 1.0 (auto estándar)
-  if (a.glass["Parabrisas"]) w += 0.25;          // el parabrisas ocupa su propio ciclo de autoclave
+/* ===== Estimador de carga → fecha SUGERIDA =====================================
+   Calibrado con el doc "Capacidad_Viking.md" (horas-persona del mapa de proceso).
+   El taller NO está limitado por el autoclave, sino por dos recursos:
+     · PISO   — 4 técnicos = ~144 h productivas/semana (desmontaje, armado, montaje, Kevlar).
+     · DIGITAL— 1 Técnico Digital = ~36 h/semana (escaneo, patrones, cejas, dibujo Kevlar, CNC).
+   Cada auto consume horas en ambos. La fecha se estima con el recurso que MANDA (el más
+   cargado), sumando lo que falta de los autos delante en la fila. Modelo NUEVO (sin escanear)
+   pesa mucho más en Digital que uno REPETIDO (ya en el sistema): 20.7 h vs 2 h. */
+const PISO_HRS_SEM = 144;    // 4 técnicos × 45 h × 80% util. (doc §2)
+const DIGITAL_HRS_SEM = 36;  // 1 Técnico Digital × 45 h × 80%
+const CICLOS_SEM = 12;       // ~2.5 ciclos/día × 5 (autoclave; nunca es el cuello)
+
+const LATERALES_OP = [...LAT_DEL, ...LAT_TRAS]; // laterales operables: el montaje más pesado
+
+/* Horas-persona de PISO que consume un auto, por frente (doc §3.1). Escala con su config. */
+function horasPiso(a) {
+  const glass = a.glass || {};
+  const nVid = Object.keys(glass).length;
+  const nLat = LATERALES_OP.filter((p) => glass[p]).length;   // operables: ~3 h-persona c/u
+  const nOtros = Math.max(0, nVid - nLat);                    // resto de vidrios: ~1.9 h c/u
   const nKevlar = (a.kevlar && a.kevlar.length) || 0;
-  w += 0.05 * nKevlar;                           // Kevlar corre en paralelo: pesa poco al cuello
-  if (a.vidriosNuevo) w += 1.3;                  // primera vez de los vidrios: gran carga del Técnico Digital
-  if (a.kevlarNuevo && nKevlar > 0) w += 0.6;    // primera vez del Kevlar: plantillas + AutoCAD (aparte)
-  return w;
+  return {
+    desmontaje: nVid ? 7.7 : 0,                               // fijo por auto
+    armado: 1.26 * nVid,                                      // esmerilado+embolsado + armado de capas
+    montaje: 3.0 * nLat + 1.9 * nOtros,                       // el frente más caro (~12 h en 4 laterales)
+    kevlar: nKevlar ? (2.8 * nKevlar + (a.kevlarNuevo ? 9.5 : 0)) : 0, // instalación + plantilla si es 1ª vez
+  };
 }
-function pesoRestante(a) {
-  const frac = (HITOS.length - 1 - a.hito) / (HITOS.length - 1);
-  return pesoTotal(a) * Math.max(0, frac);
+/* Horas del TÉCNICO DIGITAL (doc §3.2). Aquí está la diferencia nuevo vs repetido. */
+function horasDigital(a) {
+  const nVid = Object.keys(a.glass || {}).length;
+  if (!nVid) return 0;
+  let h = 2;                                    // CNC (corte): igual esté o no escaneado
+  if (a.vidriosNuevo) h += 8 + 2.7;             // escaneo 3D + patrones + diseño de cejas (solo 1ª vez)
+  const nKevlar = (a.kevlar && a.kevlar.length) || 0;
+  if (a.kevlarNuevo && nKevlar > 0) h += 8;     // dibujo de Kevlar en AutoCAD (solo 1ª vez)
+  return h;
 }
+const horasPisoTotal = (a) => { const h = horasPiso(a); return h.desmontaje + h.armado + h.montaje + h.kevlar; };
+
+/* Lo que FALTA de cada recurso según el avance (hito / carril Kevlar). */
+function pisoRestante(a) {
+  const h = horasPiso(a);
+  let r = 0;
+  if (a.hito <= 1) r += h.desmontaje;   // desmontaje: pendiente hasta pasar la etapa 1
+  if (a.hito <= 3) r += h.armado;       // armado de capas: hasta la etapa 3
+  if (a.hito <= 5) r += h.montaje;      // montaje: hasta la etapa 5
+  if ((a.kevlar && a.kevlar.length) > 0) r += h.kevlar * Math.max(0, 3 - a.kevlarHito) / 3; // carril paralelo
+  return r;
+}
+function digitalRestante(a) {
+  // El trabajo digital se consume hasta "Material cortado" (etapa 2). Después, ~0.
+  return a.hito <= 2 ? horasDigital(a) : 0;
+}
+const ciclosDe = (a) => (a.glass && a.glass["Parabrisas"] ? 2 : 1); // el parabrisas ocupa un ciclo él solo
+
 function sumarDiasHabiles(desde, dias) {
   const d = new Date(desde); let restan = Math.max(1, Math.ceil(dias));
   while (restan > 0) { d.setDate(d.getDate() + 1); const dow = d.getDay(); if (dow !== 0 && dow !== 6) restan--; }
   return d;
 }
+/* Días de cada recurso para sacar al auto objetivo + su cola. El recurso que MANDA es el mayor. */
+function diasPorRecurso(objetivo, autos) {
+  const cola = autos.filter((a) => !entregado(a) && a.id !== objetivo.id).concat([objetivo]);
+  const pisoH = cola.reduce((s, a) => s + pisoRestante(a), 0);
+  const digH = cola.reduce((s, a) => s + digitalRestante(a), 0);
+  const ciclos = cola.reduce((s, a) => s + ciclosDe(a), 0);
+  return {
+    Piso: (pisoH / PISO_HRS_SEM) * 5,
+    "Técnico Digital": (digH / DIGITAL_HRS_SEM) * 5,
+    Autoclave: (ciclos / CICLOS_SEM) * 5,
+  };
+}
+/* Cuál recurso es el cuello de botella para este auto (el de más días). */
+function cuelloDe(objetivo, autos) {
+  const d = diasPorRecurso(objetivo, autos);
+  return Object.keys(d).reduce((a, b) => (d[b] > d[a] ? b : a));
+}
 function fechaSugerida(objetivo, autos) {
-  const adelante = autos.filter((a) => !entregado(a) && a.id !== objetivo.id).reduce((s, a) => s + pesoRestante(a), 0);
-  const total = adelante + pesoTotal(objetivo);
-  const f = sumarDiasHabiles(new Date(), (total / CAP_SEMANA) * 5);
-  return f.toISOString().slice(0, 10);
+  const d = diasPorRecurso(objetivo, autos);
+  const dias = Math.max(d.Piso, d["Técnico Digital"], d.Autoclave);
+  return sumarDiasHabiles(new Date(), dias).toISOString().slice(0, 10);
 }
 
 /* ================= Capa de datos (Sheets o demo) ================= */
@@ -284,9 +354,21 @@ const FONT_LINK = "https://fonts.googleapis.com/css2?family=Michroma&family=Inte
 const DISPLAY = "'Michroma', 'Arial Black', sans-serif";
 const BODY = "'Inter', system-ui, sans-serif";
 
-/* ================= App ================= */
+/* ================= App =================
+   MODOS POR DISPOSITIVO (parámetro ?modo= en la URL):
+   · ?modo=tv    → SOLO la vista de Taller, sin navegación. Es la URL de la TELEVISIÓN
+                   de la pared: se abre una vez en el navegador de la TV y queda fija (kiosko).
+   · ?modo=piso  → SOLO la vista de registro (antes "Tableta"), sin navegación. Es la URL
+                   del celular/dispositivo con el que se marca "terminé mi parte".
+   · (sin modo)  → modo oficina: todas las pestañas (Taller, Registro, Agenda, Control).
+                   La Agenda vive aquí — es herramienta de análisis de oficina, no del piso. */
+const MODO_APP = (() => {
+  if (typeof window === "undefined") return "oficina";
+  const m = new URLSearchParams(window.location.search).get("modo");
+  return m === "tv" || m === "piso" ? m : "oficina";
+})();
 export default function TableroViking() {
-  const [vista, setVista] = useState("tv");
+  const [vista, setVista] = useState(MODO_APP === "piso" ? "tableta" : "tv");
   const [autos, setAutos] = useState(MODO_DEMO ? AUTOS_DEMO : []);
   const [reloj, setReloj] = useState(new Date());
   const [ultimaSync, setUltimaSync] = useState(null);
@@ -333,11 +415,15 @@ export default function TableroViking() {
             <div style={{ fontSize: 9, letterSpacing: "0.42em", color: T.dim, marginTop: 3, textTransform: "uppercase" }}>Taller · by GAV</div>
           </div>
         </div>
-        <nav style={{ display: "flex", gap: 26 }}>
-          {[["tv", "Taller"], ["tableta", "Tableta"], ["agenda", "Agenda"], ["admin", "Control"]].map(([k, lbl]) => (
-            <button key={k} onClick={() => setVista(k)} style={{ background: "none", border: "none", cursor: "pointer", padding: "6px 2px", fontFamily: BODY, fontSize: 13, fontWeight: 600, letterSpacing: "0.12em", textTransform: "uppercase", color: vista === k ? T.gold : T.dim, borderBottom: `2px solid ${vista === k ? T.gold : "transparent"}` }}>{lbl}</button>
-          ))}
-        </nav>
+        {MODO_APP === "oficina" ? (
+          <nav style={{ display: "flex", gap: 26 }}>
+            {[["tv", "Taller"], ["tableta", "Registro"], ["agenda", "Agenda"], ["admin", "Control"]].map(([k, lbl]) => (
+              <button key={k} onClick={() => setVista(k)} style={{ background: "none", border: "none", cursor: "pointer", padding: "6px 2px", fontFamily: BODY, fontSize: 13, fontWeight: 600, letterSpacing: "0.12em", textTransform: "uppercase", color: vista === k ? T.gold : T.dim, borderBottom: `2px solid ${vista === k ? T.gold : "transparent"}` }}>{lbl}</button>
+            ))}
+          </nav>
+        ) : (
+          <span style={{ fontSize: 10, letterSpacing: "0.3em", color: T.dim, textTransform: "uppercase" }}>{MODO_APP === "tv" ? "" : "Registro de avance"}</span>
+        )}
         <div style={{ textAlign: "right" }}>
           <div className="tnum" style={{ fontFamily: DISPLAY, fontSize: 19 }}>{reloj.toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" })}</div>
           <div style={{ fontSize: 10.5, color: errorSync ? "#e07a7a" : T.dim, textTransform: MODO_DEMO ? "uppercase" : "none", marginTop: 2, letterSpacing: "0.04em" }}>
@@ -446,6 +532,9 @@ function VistaTV({ autos }) {
           return (
             <div key={r} style={{ padding: "13px 0", borderBottom: `1px solid ${T.line}` }}>
               <div style={{ fontSize: 10, letterSpacing: "0.16em", color: T.dim, textTransform: "uppercase" }}>{r}</div>
+              {EQUIPO[r] && EQUIPO[r].length > 0 && (
+                <div style={{ fontSize: 10.5, color: T.mut, marginTop: 2 }}>{EQUIPO[r].join(" · ")}</div>
+              )}
               {q.length === 0 ? (
                 <div style={{ fontSize: 13.5, marginTop: 4, color: T.dim, fontStyle: "italic" }}>Disponible</div>
               ) : (
@@ -476,23 +565,41 @@ function VistaAgenda({ autos }) {
   const filas = ["Vendedor", "Técnico Digital", "Vidrios", "Líder", "Kevlar"];
   const grid = {}; filas.forEach((f) => (grid[f] = [[], [], [], [], []]));
 
-  // Reparto aproximado: cada auto avanza sus etapas restantes en secuencia (~2 etapas/día);
-  // el Kevlar corre en paralelo en su carril. Es una PROYECCIÓN visual, no el motor fino.
+  // Reparto por HORAS REALES (doc de Capacidad): cada etapa ocupa los días que su carga
+  // implica, no un plano de 2/día. Montaje y —en modelos nuevos— el Técnico Digital
+  // empujan la fila; el Kevlar corre en paralelo en su carril. Sigue siendo proyección visual.
+  const HRS_DIA = 9;                                  // jornada efectiva por persona
+  const personasDe = (owner) => (owner === "Vidrios" || owner === "Kevlar" ? 2 : 1);
+  const horasEtapa = (a, h) => {
+    const p = horasPiso(a);
+    switch (HITOS[h].n) {
+      case "Desmontaje": return p.desmontaje;
+      case "Material cortado": return horasDigital(a); // aquí pega el nuevo vs repetido
+      case "Armado de capas": return p.armado;
+      case "En autoclave": return ciclosDe(a) * 3.3;   // tiempo de máquina (no mano de obra)
+      case "Montaje": return p.montaje;                 // el frente más pesado
+      case "Calidad aprobada": return 2;
+      default: return 1;                                // Ingresado / Entregado: trámite
+    }
+  };
   enProceso.forEach((a) => {
-    let seq = 0;
+    let cursor = 0; // días hábiles acumulados desde hoy
     for (let h = a.hito + 1; h < HITOS.length; h++) {
       const owner = HITOS[h].ow;
-      const dia = Math.floor(seq / 2);
+      const dia = Math.floor(cursor);
       if (dia < 5 && grid[owner]) grid[owner][dia].push({ auto: a, etapa: HITOS[h].n });
-      seq++;
+      const span = horasEtapa(a, h) / (HRS_DIA * personasDe(owner));
+      cursor += Math.max(span, 0.4); // cada etapa avanza el reloj al menos ~medio día
     }
     if (a.kevlar.length) {
-      const offset = a.hito < HITO_DESMONTAJE ? 1 : 0; // el Kevlar arranca al desmontar
-      let ks = 0;
+      const hk = horasPiso(a).kevlar;                   // plantilla (si 1ª vez) + instalación
+      let cursorK = a.hito < HITO_DESMONTAJE ? 1 : 0;   // el Kevlar arranca al desmontar
+      const pasos = 3 - a.kevlarHito;
+      const spanK = pasos > 0 ? (hk / (HRS_DIA * 2)) / pasos : 0; // repartido entre los pasos que faltan
       for (let k = a.kevlarHito + 1; k <= 3; k++) {
-        const dia = offset + ks;
+        const dia = Math.floor(cursorK);
         if (dia < 5) grid["Kevlar"][dia].push({ auto: a, etapa: KEVLAR_HITOS[k] });
-        ks++;
+        cursorK += Math.max(spanK, 0.4);
       }
     }
   });
@@ -548,9 +655,9 @@ function VistaAgenda({ autos }) {
       </div>
 
       <p style={{ fontSize: 11.5, color: T.dim, marginTop: 16, lineHeight: 1.5 }}>
-        Proyección <b style={{ color: T.mut }}>aproximada</b>: reparte las etapas restantes de cada auto a lo largo de la semana con reglas
-        simples (no modela el autoclave como recurso, ni el lag de cejas, ni el detalle de dependencias). Es un piloto visual mientras la
-        agenda fina por operador queda lista. El Kevlar se muestra en su propio carril.
+        Proyección <b style={{ color: T.mut }}>aproximada</b>: cada etapa ocupa los días que implican sus <b style={{ color: T.mut }}>horas reales</b>
+        (doc de Capacidad), no un plano fijo — por eso el montaje y, en modelos nuevos, el Técnico Digital empujan la fila. No modela el lag
+        del proveedor de cejas ni todas las dependencias finas. El Kevlar se muestra en su propio carril, en paralelo.
       </p>
     </main>
   );
@@ -884,7 +991,9 @@ function Panel({ autos, setAutos, recargar }) {
     setGuardando((g) => ({ ...g, [a.id]: "…" }));
     // No recargamos toda la lista: borraría autos nuevos aún sin guardar u otras
     // ediciones en curso. La tarjeta ya vive en el estado local con su id.
-    try { await apiPost({ action: "guardar", clave, auto: a }); setGuardando((g) => ({ ...g, [a.id]: "✓ Guardado" })); setTimeout(() => setGuardando((g) => ({ ...g, [a.id]: "" })), 1800); }
+    // Se manda `vidrios` (claves de posición separadas por coma) para que el backend
+    // lo vuelque tal cual a la columna VIDRIOS de la hoja AUTOS, sin recalcular nada.
+    try { await apiPost({ action: "guardar", clave, auto: { ...a, vidrios: clavesVidrios(a) } }); setGuardando((g) => ({ ...g, [a.id]: "✓ Guardado" })); setTimeout(() => setGuardando((g) => ({ ...g, [a.id]: "" })), 1800); }
     catch (e) { setGuardando((g) => ({ ...g, [a.id]: "✗ " + e.message })); }
   };
   const eliminar = async (id) => {
@@ -958,11 +1067,20 @@ function Panel({ autos, setAutos, recargar }) {
               {(() => {
                 const sug = fechaSugerida(a, autos);
                 const coincide = a.entregaFecha === sug;
+                const cuello = cuelloDe(a, autos);
+                const hp = horasPisoTotal(a), hd = horasDigital(a);
                 return (
-                  <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", marginBottom: 14, fontSize: 12.5, color: T.mut }}>
-                    <span>Sugerencia por carga del taller: <b style={{ color: T.gold, textTransform: "capitalize" }}>{fechaCorta(sug)}</b> <span style={{ color: T.dim }}>(estimado)</span></span>
-                    {!coincide && <button onClick={() => upd(a.id, "entregaFecha", sug)} style={S.ghost}>Usar fecha sugerida</button>}
-                    {coincide && <span style={{ color: T.teal }}>✓ en uso</span>}
+                  <div style={{ marginBottom: 14 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", fontSize: 12.5, color: T.mut }}>
+                      <span>Sugerencia por carga del taller: <b style={{ color: T.gold, textTransform: "capitalize" }}>{fechaCorta(sug)}</b> <span style={{ color: T.dim }}>(estimado)</span></span>
+                      {!coincide && <button onClick={() => upd(a.id, "entregaFecha", sug)} style={S.ghost}>Usar fecha sugerida</button>}
+                      {coincide && <span style={{ color: T.teal }}>✓ en uso</span>}
+                    </div>
+                    <div className="tnum" style={{ fontSize: 11, color: T.dim, marginTop: 5 }}>
+                      Manda: <b style={{ color: cuello === "Técnico Digital" ? T.blue : T.mut }}>{cuello}</b>
+                      &nbsp;·&nbsp; Piso ~{hp.toFixed(0)} h &nbsp;·&nbsp; Digital ~{hd.toFixed(0)} h
+                      &nbsp;·&nbsp; {a.vidriosNuevo ? "modelo NUEVO (sin escanear)" : "modelo REPETIDO (en el sistema)"}
+                    </div>
                   </div>
                 );
               })()}
@@ -990,6 +1108,12 @@ function Panel({ autos, setAutos, recargar }) {
                         </button>
                       ))}
                     </div>
+                    <div style={{ marginTop: 12, paddingTop: 10, borderTop: `1px solid ${T.line}`, fontSize: 11.5, color: T.mut }}>
+                      Se escribirá en la columna <b className="tnum" style={{ color: T.gold }}>VIDRIOS</b>:{" "}
+                      {clavesVidrios(a)
+                        ? <span className="tnum" style={{ color: T.ink }}>{clavesVidrios(a)}</span>
+                        : <span style={{ fontStyle: "italic", color: T.dim }}>sin vidrios seleccionados</span>}
+                    </div>
                   </div>
                   <div style={{ marginBottom: 12 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 7 }}>
@@ -1010,6 +1134,13 @@ function Panel({ autos, setAutos, recargar }) {
                 </>
               )}
 
+              <div style={{ marginBottom: 12 }}>
+                <Lbl style={{ display: "block", marginBottom: 7 }}>Equipo asignado a este auto</Lbl>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                  {PERSONAS.map((n) => <button key={n} onClick={() => tgl(a.id, "crew", n)} style={S.chip((a.crew || []).includes(n))}>{n}</button>)}
+                </div>
+                <div style={{ fontSize: 11, color: T.dim, marginTop: 6 }}>El vendedor varía por unidad — márcalo aquí junto con los técnicos que trabajan este coche.</div>
+              </div>
               <div style={{ marginBottom: 12 }}>
                 <Campo label={esG ? "Etapa de arranque / actual" : "Etapa actual"}>
                   <select style={S.inp} value={a.hito} onChange={(e) => upd(a.id, "hito", Number(e.target.value))}>
