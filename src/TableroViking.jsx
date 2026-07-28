@@ -151,8 +151,10 @@ const EQUIPO = {
   "Líder": ["Fernando"],                   // Fernando García Guillén — Jefe de Viking
   "Kevlar": ["Francisco", "Diego"],        // Francisco Coronado (Blindador) + Diego Ortiz — carril propio
 };
-/* Personas asignables al crew de un auto (incluye posibles vendedores, que varían). */
-const PERSONAS = ["Fernando", "Antonio", "Jonathan", "César", "Francisco", "Diego", "Mónica", "Jesús L.", "Javier"];
+/* El equipo técnico es FIJO: los 6 trabajan todos los coches, así que se asignan solos
+   al dar de alta. Lo único que varía por unidad es el vendedor — eso sí se elige. */
+const CREW_FIJO = ["Fernando", "Antonio", "Jonathan", "César", "Francisco", "Diego"];
+const VENDEDORES = ["Mónica", "Jesús L.", "Javier"];
 
 /* ================= Datos DEMO (solo sin backend) ================= */
 const AUTOS_DEMO = [
@@ -531,10 +533,10 @@ function VistaTV({ autos }) {
           const enFila = q.length - 1;
           return (
             <div key={r} style={{ padding: "13px 0", borderBottom: `1px solid ${T.line}` }}>
-              <div style={{ fontSize: 10, letterSpacing: "0.16em", color: T.dim, textTransform: "uppercase" }}>{r}</div>
-              {EQUIPO[r] && EQUIPO[r].length > 0 && (
-                <div style={{ fontSize: 10.5, color: T.mut, marginTop: 2 }}>{EQUIPO[r].join(" · ")}</div>
-              )}
+              {/* Solo la persona; el puesto queda implícito (para "Vendedor", que varía, se deja la palabra) */}
+              <div style={{ fontSize: 10, letterSpacing: "0.16em", color: T.dim, textTransform: "uppercase" }}>
+                {EQUIPO[r] && EQUIPO[r].length > 0 ? EQUIPO[r].join(" · ") : r}
+              </div>
               {q.length === 0 ? (
                 <div style={{ fontSize: 13.5, marginTop: 4, color: T.dim, fontStyle: "italic" }}>Disponible</div>
               ) : (
@@ -978,11 +980,22 @@ function Panel({ autos, setAutos, recargar }) {
     return { ...a, glass: g, ahumado: ah, paquete: { ...a.paquete, label: "Personalizado" } };
   }));
   const tgl = (id, campo, v) => setAutos((p) => p.map((a) => (a.id === id ? { ...a, [campo]: a[campo].includes(v) ? a[campo].filter((x) => x !== v) : [...a[campo], v] } : a)));
+  // Un solo vendedor por unidad: elegir uno quita al anterior; tocarlo de nuevo lo desmarca.
+  const setVendedor = (id, n) => setAutos((p) => p.map((a) => {
+    if (a.id !== id) return a;
+    const yaEstaba = (a.crew || []).includes(n);
+    const sinVendedores = (a.crew || []).filter((x) => !VENDEDORES.includes(x));
+    return { ...a, crew: yaEstaba ? sinVendedores : [...sinVendedores, n] };
+  }));
 
   const agregar = () => {
     const nid = Date.now(); // id único: nunca choca con otro auto (evita sobrescribir)
+    // Número de orden automático: el mayor existente + 1 (editable por si se necesita otro).
+    // El backend lo confirma al guardar: si va vacío o "VK-", asigna el consecutivo él mismo.
+    const nums = autos.map((x) => parseInt(ordenCorta(x.orden), 10)).filter((n) => !isNaN(n));
+    const sigOrden = nums.length ? "VK-" + (Math.max(...nums) + 1) : "VK-";
     setNuevoId(nid);
-    setAutos((p) => [{ id: nid, tipo: "Nuevo", marca: "", modelo: "", tipoVeh: "", anio: 2026, placa: "", orden: "VK-", cliente: "", bahia: "", entregaFecha: "2026-07-20", entregaHora: "18:00", nivel: "Viking Plus", paquete: { label: "Sin paquete", codigos: [] }, glass: {}, ahumado: {}, kevlar: [], kevlarHito: 0, vidriosNuevo: true, kevlarNuevo: false, hito: 0, crew: [], motivo: "", notas: "" }, ...p]);
+    setAutos((p) => [{ id: nid, tipo: "Nuevo", marca: "", modelo: "", tipoVeh: "", anio: 2026, placa: "", orden: sigOrden, cliente: "", bahia: "", entregaFecha: "2026-07-20", entregaHora: "18:00", nivel: "Viking Plus", paquete: { label: "Sin paquete", codigos: [] }, glass: {}, ahumado: {}, kevlar: [], kevlarHito: 0, vidriosNuevo: true, kevlarNuevo: false, hito: 0, crew: [...CREW_FIJO], motivo: "", notas: "" }, ...p]);
     if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
@@ -993,7 +1006,11 @@ function Panel({ autos, setAutos, recargar }) {
     // ediciones en curso. La tarjeta ya vive en el estado local con su id.
     // Se manda `vidrios` (claves de posición separadas por coma) para que el backend
     // lo vuelque tal cual a la columna VIDRIOS de la hoja AUTOS, sin recalcular nada.
-    try { await apiPost({ action: "guardar", clave, auto: { ...a, vidrios: clavesVidrios(a) } }); setGuardando((g) => ({ ...g, [a.id]: "✓ Guardado" })); setTimeout(() => setGuardando((g) => ({ ...g, [a.id]: "" })), 1800); }
+    try {
+      const j = await apiPost({ action: "guardar", clave, auto: { ...a, vidrios: clavesVidrios(a) } });
+      if (j.orden && j.orden !== a.orden) upd(a.id, "orden", j.orden); // el backend asignó el consecutivo
+      setGuardando((g) => ({ ...g, [a.id]: "✓ Guardado" })); setTimeout(() => setGuardando((g) => ({ ...g, [a.id]: "" })), 1800);
+    }
     catch (e) { setGuardando((g) => ({ ...g, [a.id]: "✗ " + e.message })); }
   };
   const eliminar = async (id) => {
@@ -1058,9 +1075,10 @@ function Panel({ autos, setAutos, recargar }) {
                 )}
                 <span style={{ fontSize: 11.5, color: T.mut }}>"Primera vez" del modelo suma trabajo (escaneo/patrón, plantillas) y aleja la fecha sugerida</span>
               </div>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1.4fr 1fr .8fr", gap: 10, marginBottom: 8 }}>
+              {/* Sin campo de cliente/dueño: el tablero no captura ni muestra datos del dueño.
+                  La columna CLIENTE sigue en la hoja por compatibilidad, pero queda vacía. */}
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr .8fr", gap: 10, marginBottom: 8 }}>
                 <Campo label="Orden"><input style={S.inp} value={a.orden} onChange={(e) => upd(a.id, "orden", e.target.value)} /></Campo>
-                <Campo label="Cliente (privado)"><input style={S.inp} value={a.cliente} onChange={(e) => upd(a.id, "cliente", e.target.value)} /></Campo>
                 <Campo label="Entrega"><input style={S.inp} type="date" value={a.entregaFecha} onChange={(e) => upd(a.id, "entregaFecha", e.target.value)} /></Campo>
                 <Campo label="Hora"><input style={S.inp} type="time" value={a.entregaHora} onChange={(e) => upd(a.id, "entregaHora", e.target.value)} /></Campo>
               </div>
@@ -1135,11 +1153,11 @@ function Panel({ autos, setAutos, recargar }) {
               )}
 
               <div style={{ marginBottom: 12 }}>
-                <Lbl style={{ display: "block", marginBottom: 7 }}>Equipo asignado a este auto</Lbl>
+                <Lbl style={{ display: "block", marginBottom: 7 }}>Vendedor de esta unidad</Lbl>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                  {PERSONAS.map((n) => <button key={n} onClick={() => tgl(a.id, "crew", n)} style={S.chip((a.crew || []).includes(n))}>{n}</button>)}
+                  {VENDEDORES.map((n) => <button key={n} onClick={() => setVendedor(a.id, n)} style={S.chip((a.crew || []).includes(n))}>{n}</button>)}
                 </div>
-                <div style={{ fontSize: 11, color: T.dim, marginTop: 6 }}>El vendedor varía por unidad — márcalo aquí junto con los técnicos que trabajan este coche.</div>
+                <div style={{ fontSize: 11, color: T.dim, marginTop: 6 }}>El equipo técnico ({CREW_FIJO.join(", ")}) se asigna solo — nada que capturar.</div>
               </div>
               <div style={{ marginBottom: 12 }}>
                 <Campo label={esG ? "Etapa de arranque / actual" : "Etapa actual"}>
