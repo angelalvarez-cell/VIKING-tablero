@@ -692,7 +692,9 @@ function Banda({ auto }) {
         <div style={{ minWidth: 0 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
             <h3 style={{ margin: 0, fontSize: 19, fontWeight: 700, letterSpacing: "-0.01em", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{nombreAuto(auto)} <span style={{ fontWeight: 400, color: T.mut, fontSize: 14 }}>{auto.anio}</span></h3>
-            <span style={{ fontFamily: DISPLAY, fontSize: 9, letterSpacing: "0.16em", color: T.gold, border: `1px solid ${T.goldSoft}`, borderRadius: 3, padding: "2px 6px", flexShrink: 0 }}>{auto.bahia || "—"}</span>
+            {auto.bahia
+              ? <span style={{ fontFamily: DISPLAY, fontSize: 9, letterSpacing: "0.16em", color: T.gold, border: `1px solid ${T.goldSoft}`, borderRadius: 3, padding: "2px 6px", flexShrink: 0 }}>{auto.bahia}</span>
+              : <span style={{ fontFamily: DISPLAY, fontSize: 9, letterSpacing: "0.16em", color: T.dim, border: `1px solid ${T.line2}`, borderRadius: 3, padding: "2px 6px", flexShrink: 0 }}>EN COLA</span>}
             {esG && <span style={{ fontSize: 8.5, fontWeight: 700, letterSpacing: "0.14em", textTransform: "uppercase", color: "#0a0a0b", background: T.gold, borderRadius: 3, padding: "3px 6px", flexShrink: 0 }}>Garantía</span>}
           </div>
           <div className="tnum" style={{ fontSize: 10.5, color: T.dim, marginTop: 3, letterSpacing: "0.03em" }}>{auto.placa} &nbsp;·&nbsp; {auto.orden}</div>
@@ -867,7 +869,7 @@ function VistaTableta({ autos, setAutos, recargar }) {
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
                 <div>
                   <div style={{ fontSize: 19, fontWeight: 700 }}>{nombreAuto(a)} <span style={{ color: T.mut, fontWeight: 400, fontSize: 14 }}>{a.anio}</span></div>
-                  <div className="tnum" style={{ fontSize: 12, color: T.dim, marginTop: 3 }}>{a.orden} · {a.bahia}{a.tipo === "Garantía" ? "  · GARANTÍA" : ""}</div>
+                  <div className="tnum" style={{ fontSize: 12, color: T.dim, marginTop: 3 }}>{a.orden} · {a.bahia || "En cola"}{a.tipo === "Garantía" ? "  · GARANTÍA" : ""}</div>
                 </div>
                 <div style={{ textAlign: "right" }}>
                   <div style={{ fontSize: 9.5, letterSpacing: "0.16em", color: T.dim, textTransform: "uppercase" }}>Etapa actual</div>
@@ -1058,7 +1060,7 @@ function Panel({ autos, setAutos, recargar }) {
                 </Campo>
                 <Campo label="Año"><input style={S.inp} type="number" value={a.anio} onChange={(e) => upd(a.id, "anio", Number(e.target.value))} /></Campo>
                 <Campo label="Placa"><input style={S.inp} value={a.placa} onChange={(e) => upd(a.id, "placa", e.target.value)} /></Campo>
-                <Campo label="Bahía"><input style={S.inp} value={a.bahia} onChange={(e) => upd(a.id, "bahia", e.target.value)} placeholder="B1" /></Campo>
+                <Campo label="Bahía (vacía = en cola)"><input style={S.inp} value={a.bahia} onChange={(e) => upd(a.id, "bahia", e.target.value)} placeholder="En cola" /></Campo>
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap", marginBottom: 12 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
