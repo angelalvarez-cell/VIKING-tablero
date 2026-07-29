@@ -378,7 +378,18 @@ export default function TableroViking() {
 
   const cargar = useCallback(async () => {
     if (MODO_DEMO) return;
-    try { setAutos(await apiListar()); setUltimaSync(new Date()); setErrorSync(false); }
+    try {
+      const lista = await apiListar();
+      // PROTECCIÓN: los autos recién agregados que aún no se guardan (_local) solo existen
+      // en esta pantalla. Un refresco del servidor NO debe pisarlos — se conservan encima
+      // de la lista del servidor hasta que Guardar los confirme.
+      setAutos((prev) => {
+        const locales = prev.filter((a) => a._local);
+        const ids = new Set(locales.map((a) => a.id));
+        return [...locales, ...lista.filter((a) => !ids.has(a.id))];
+      });
+      setUltimaSync(new Date()); setErrorSync(false);
+    }
     catch (e) { setErrorSync(true); }
   }, []);
 
@@ -997,7 +1008,7 @@ function Panel({ autos, setAutos, recargar }) {
     const nums = autos.map((x) => parseInt(ordenCorta(x.orden), 10)).filter((n) => !isNaN(n));
     const sigOrden = nums.length ? "VK-" + (Math.max(...nums) + 1) : "VK-";
     setNuevoId(nid);
-    setAutos((p) => [{ id: nid, tipo: "Nuevo", marca: "", modelo: "", tipoVeh: "", anio: 2026, placa: "", orden: sigOrden, cliente: "", bahia: "", entregaFecha: "2026-07-20", entregaHora: "18:00", nivel: "Viking Plus", paquete: { label: "Sin paquete", codigos: [] }, glass: {}, ahumado: {}, kevlar: [], kevlarHito: 0, vidriosNuevo: true, kevlarNuevo: false, hito: 0, crew: [...CREW_FIJO], motivo: "", notas: "" }, ...p]);
+    setAutos((p) => [{ id: nid, _local: true, tipo: "Nuevo", marca: "", modelo: "", tipoVeh: "", anio: 2026, placa: "", orden: sigOrden, cliente: "", bahia: "", entregaFecha: "2026-07-20", entregaHora: "18:00", nivel: "Viking Plus", paquete: { label: "Sin paquete", codigos: [] }, glass: {}, ahumado: {}, kevlar: [], kevlarHito: 0, vidriosNuevo: true, kevlarNuevo: false, hito: 0, crew: [...CREW_FIJO], motivo: "", notas: "" }, ...p]);
     if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
@@ -1010,7 +1021,8 @@ function Panel({ autos, setAutos, recargar }) {
     // lo vuelque tal cual a la columna VIDRIOS de la hoja AUTOS, sin recalcular nada.
     try {
       const j = await apiPost({ action: "guardar", clave, auto: { ...a, vidrios: clavesVidrios(a) } });
-      if (j.orden && j.orden !== a.orden) upd(a.id, "orden", j.orden); // el backend asignó el consecutivo
+      // Guardado confirmado: ya vive en el servidor → deja de ser "_local" (y toma la orden asignada)
+      setAutos((p) => p.map((x) => (x.id === a.id ? { ...x, _local: false, orden: j.orden || x.orden } : x)));
       setGuardando((g) => ({ ...g, [a.id]: "✓ Guardado" })); setTimeout(() => setGuardando((g) => ({ ...g, [a.id]: "" })), 1800);
     }
     catch (e) { setGuardando((g) => ({ ...g, [a.id]: "✗ " + e.message })); }
