@@ -460,8 +460,8 @@ function VistaTV({ autos }) {
   const claveOrden = (a) => { const d = diasPara(a.entregaFecha); return d === null ? Infinity : d; };
   const orden = [...autos].filter((a) => !entregado(a)).sort((a, b) => claveOrden(a) - claveOrden(b));
 
-  /* Slideshow: 3 autos grandes por pantalla, rota cada 8 s (urgentes primero por el orden). */
-  const POR_SLIDE = 2, SEG = 8000;
+  /* Slideshow: 2 autos grandes por pantalla, rota cada 20 s (urgentes primero por el orden). */
+  const POR_SLIDE = 2, SEG = 20000;
   const grupos = [];
   for (let i = 0; i < orden.length; i += POR_SLIDE) grupos.push(orden.slice(i, i + POR_SLIDE));
   const totalSlides = Math.max(1, grupos.length);
