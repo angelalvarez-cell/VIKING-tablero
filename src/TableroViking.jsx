@@ -1000,9 +1000,10 @@ function Panel({ autos, setAutos, recargar }) {
       <main style={{ maxWidth: 380, margin: "80px auto", padding: "0 20px", textAlign: "center" }}>
         <div style={{ fontFamily: DISPLAY, fontSize: 13, letterSpacing: "0.3em", color: T.gold, marginBottom: 18 }}>CONTROL</div>
         <input type="password" placeholder="Clave de administración" value={intento} onChange={(e) => setIntento(e.target.value)}
-          onKeyDown={(e) => { if (e.key === "Enter") setClave(intento); }}
+          autoCapitalize="none" autoCorrect="off" spellCheck={false}
+          onKeyDown={(e) => { if (e.key === "Enter") setClave(intento.trim()); }}
           style={{ ...S.inp, textAlign: "center", fontSize: 15, padding: "13px" }} />
-        <button onClick={() => setClave(intento)} style={{ ...S.gold, width: "100%", marginTop: 12, padding: "13px" }}>Entrar</button>
+        <button onClick={() => setClave(intento.trim())} style={{ ...S.gold, width: "100%", marginTop: 12, padding: "13px" }}>Entrar</button>
         <p style={{ fontSize: 11.5, color: T.dim, marginTop: 14 }}>La clave se valida al guardar. Sin ella, el backend rechaza cualquier cambio.</p>
       </main>
     );
