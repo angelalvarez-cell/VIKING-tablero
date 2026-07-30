@@ -806,9 +806,8 @@ function Banda({ auto }) {
       <div style={{ marginTop: 10, paddingTop: 8, borderTop: `1px solid ${T.line}` }}>
         <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 5 }}>
           <span style={{ fontFamily: DISPLAY, fontSize: 10.5, letterSpacing: "0.1em", color: T.gold, textTransform: "uppercase" }}>{et.n}</span>
-          {/* Puesto, no nombre: quién lo hace varía. El nombre REAL se firma al registrar el
-              avance en el piso (bitácora). El vendedor sí va con nombre: se elige por unidad. */}
-          <span style={{ fontSize: 10, color: T.mut }}>{et.ow === "Vendedor" ? nombreOw(auto, et.ow) : et.ow}</span>
+          {/* Sin responsable en la TV por ahora: solo la etapa. El nombre real de quien
+              hace cada paso queda firmado en la bitácora al registrar el avance. */}
           <span className="tnum" style={{ fontSize: 9.5, color: T.dim, marginLeft: "auto" }}>{auto.hito + 1}/{HITOS.length}</span>
         </div>
         <div style={{ position: "relative", height: 8, marginBottom: conKevlar ? 8 : 0 }}>
