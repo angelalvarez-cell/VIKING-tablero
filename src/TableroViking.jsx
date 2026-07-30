@@ -1052,7 +1052,12 @@ function Panel({ autos, setAutos, recargar }) {
       setAutos((p) => p.map((x) => (x.id === a.id ? { ...x, _local: false, orden: j.orden || x.orden } : x)));
       setGuardando((g) => ({ ...g, [a.id]: "✓ Guardado" })); setTimeout(() => setGuardando((g) => ({ ...g, [a.id]: "" })), 1800);
     }
-    catch (e) { setGuardando((g) => ({ ...g, [a.id]: "✗ " + e.message })); }
+    catch (e) {
+      setGuardando((g) => ({ ...g, [a.id]: "✗ " + e.message }));
+      // Clave incorrecta → regresar a la pantalla de clave para reintentar.
+      // Lo capturado NO se pierde: los autos nuevos son _local y las ediciones viven en el estado.
+      if (String(e.message).indexOf("Clave incorrecta") >= 0) setTimeout(() => { setClave(""); setIntento(""); }, 1500);
+    }
   };
   const eliminar = async (id) => {
     setAutos((p) => p.filter((a) => a.id !== id));
