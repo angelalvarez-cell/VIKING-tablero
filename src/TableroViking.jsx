@@ -174,6 +174,15 @@ const EQUIPO = {
    al dar de alta. Lo único que varía por unidad es el vendedor — eso sí se elige. */
 const CREW_FIJO = ["Fernando", "Antonio", "Jonathan", "César", "Francisco", "Diego"];
 const VENDEDORES = ["Mónica", "Jesús L.", "Javier"];
+/* Nombre(s) de la persona responsable de una etapa. Para "Vendedor" usa el vendedor
+   real marcado en esa unidad; para los demás roles, el equipo fijo. */
+const nombreOw = (auto, ow) => {
+  if (ow === "Vendedor") {
+    const v = ((auto && auto.crew) || []).filter((x) => VENDEDORES.indexOf(x) >= 0);
+    return v.length ? v.join(" · ") : "Vendedor";
+  }
+  return EQUIPO[ow] && EQUIPO[ow].length ? EQUIPO[ow].join(" · ") : ow;
+};
 
 /* ================= Datos DEMO (solo sin backend) ================= */
 const AUTOS_DEMO = [
@@ -797,7 +806,9 @@ function Banda({ auto }) {
       <div style={{ marginTop: 10, paddingTop: 8, borderTop: `1px solid ${T.line}` }}>
         <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 5 }}>
           <span style={{ fontFamily: DISPLAY, fontSize: 10.5, letterSpacing: "0.1em", color: T.gold, textTransform: "uppercase" }}>{et.n}</span>
-          <span style={{ fontSize: 10, color: T.mut }}>{et.ow}</span>
+          {/* Puesto, no nombre: quién lo hace varía. El nombre REAL se firma al registrar el
+              avance en el piso (bitácora). El vendedor sí va con nombre: se elige por unidad. */}
+          <span style={{ fontSize: 10, color: T.mut }}>{et.ow === "Vendedor" ? nombreOw(auto, et.ow) : et.ow}</span>
           <span className="tnum" style={{ fontSize: 9.5, color: T.dim, marginLeft: "auto" }}>{auto.hito + 1}/{HITOS.length}</span>
         </div>
         <div style={{ position: "relative", height: 8, marginBottom: conKevlar ? 8 : 0 }}>
@@ -835,6 +846,9 @@ function VistaTableta({ autos, setAutos, recargar }) {
   const [pend, setPend] = useState({});
   const [nota, setNota] = useState(null);
   const [area, setArea] = useState("Todos");
+  // "¿Quién registra?" — se guarda en el teléfono y firma cada avance en la bitácora
+  const [quien, setQuien] = useState(() => { try { return localStorage.getItem("vk_quien") || ""; } catch (e) { return ""; } });
+  const elegirQuien = (n) => { const v = quien === n ? "" : n; setQuien(v); try { localStorage.setItem("vk_quien", v); } catch (e) {} };
   const doFlash = (id) => { setFlash(id); setTimeout(() => setFlash((f) => (f === id ? null : f)), 900); };
   const marcarPend = (id, v) => setPend((p) => ({ ...p, [id]: v }));
 
@@ -852,7 +866,7 @@ function VistaTableta({ autos, setAutos, recargar }) {
     if (MODO_DEMO) return;
     marcarPend(id, true);
     try {
-      for (let i = 0; i < pasos; i++) await apiPost({ action: tipoAccion, id, dir });
+      for (let i = 0; i < pasos; i++) await apiPost({ action: tipoAccion, id, dir, quien });
       await recargar(); // confirma con el servidor
     } catch (e) {
       // No adivinamos: pedimos al servidor el estado real y reconciliamos.
@@ -883,7 +897,12 @@ function VistaTableta({ autos, setAutos, recargar }) {
         <span style={{ fontSize: 12.5, color: T.mut }}>Entregados esta semana <b className="tnum" style={{ color: T.gold, fontSize: 17, fontFamily: DISPLAY, marginLeft: 6 }}>{entregadosSemana}</b></span>
       </div>
 
-      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", margin: "12px 0 4px" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", margin: "12px 0 0" }}>
+        <span style={{ fontSize: 10, letterSpacing: "0.16em", color: T.dim, textTransform: "uppercase", marginRight: 2 }}>Registra</span>
+        {[...CREW_FIJO, ...VENDEDORES].map((n) => <button key={n} onClick={() => elegirQuien(n)} style={S.chip(quien === n)}>{n}</button>)}
+        {!quien && <span style={{ fontSize: 11.5, color: T.dim }}>elige tu nombre — firma cada avance en la bitácora</span>}
+      </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", margin: "10px 0 4px" }}>
         <span style={{ fontSize: 10, letterSpacing: "0.16em", color: T.dim, textTransform: "uppercase", marginRight: 2 }}>Ver</span>
         {["Todos", ...ROLES].map((r) => {
           const n = r === "Todos" ? enProceso.length : enProceso.filter((x) => tocaA(x, r)).length;
@@ -991,6 +1010,8 @@ function Panel({ autos, setAutos, recargar }) {
   }
 
   const upd = (id, c, v) => setAutos((p) => p.map((a) => (a.id === id ? { ...a, [c]: v } : a)));
+  // Cambiar el tipo de ingreso; "En mano" no ocupa bahía, así que se limpia si tenía.
+  const setTipo = (id, t) => setAutos((p) => p.map((a) => (a.id === id ? { ...a, tipo: t, bahia: t === EN_MANO ? "" : a.bahia } : a)));
   const setMarca = (id, marca) => setAutos((p) => p.map((a) => (a.id === id ? { ...a, marca, modelo: "", tipoVeh: "" } : a)));
   const setModelo = (id, marca, modelo) => setAutos((p) => p.map((a) => (a.id === id ? { ...a, modelo, tipoVeh: tipoDe(marca, modelo) } : a)));
   const aplicarCob = (id, nombre) => setAutos((p) => p.map((a) => {
@@ -1081,7 +1102,7 @@ function Panel({ autos, setAutos, recargar }) {
             <div key={a.id} style={{ background: T.panel, border: `1px solid ${nuevo ? T.gold : T.line}`, borderRadius: 12, padding: 20, animation: nuevo ? "glow 1.6s ease-in-out 2" : "none" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
                 <Lbl>Ingreso</Lbl>
-                {["Nuevo", "Garantía", EN_MANO].map((t) => <button key={t} onClick={() => upd(a.id, "tipo", t)} style={S.chip(a.tipo === t)}>{t}</button>)}
+                {["Nuevo", "Garantía", EN_MANO].map((t) => <button key={t} onClick={() => setTipo(a.id, t)} style={S.chip(a.tipo === t)}>{t}</button>)}
                 {esG && <span style={{ fontSize: 11.5, color: T.mut, marginLeft: 6 }}>Sin facturar · elige la etapa de arranque según la reparación</span>}
                 {a.tipo === EN_MANO && <span style={{ fontSize: 11.5, color: T.mut, marginLeft: 6 }}>Vidrios de socio, ya desmontados — sin bahía; el flujo salta desmontaje y montaje</span>}
                 <button onClick={() => eliminar(a.id)} style={{ ...S.ghost, marginLeft: "auto", color: "#c96a6a", borderColor: "rgba(201,106,106,.35)" }}>Eliminar</button>
@@ -1105,7 +1126,9 @@ function Panel({ autos, setAutos, recargar }) {
                 </Campo>
                 <Campo label="Año"><input style={S.inp} type="number" value={a.anio} onChange={(e) => upd(a.id, "anio", Number(e.target.value))} /></Campo>
                 <Campo label="Placa"><input style={S.inp} value={a.placa} onChange={(e) => upd(a.id, "placa", e.target.value)} /></Campo>
-                <Campo label="Bahía (vacía = en cola)"><input style={S.inp} value={a.bahia} onChange={(e) => upd(a.id, "bahia", e.target.value)} placeholder="En cola" /></Campo>
+                {a.tipo === EN_MANO
+                  ? <Campo label="Bahía"><div style={{ ...S.inp, display: "flex", alignItems: "center", color: T.dim, fontStyle: "italic", border: `1px dashed ${T.line2}`, background: "transparent" }}>No aplica</div></Campo>
+                  : <Campo label="Bahía (vacía = en cola)"><input style={S.inp} value={a.bahia} onChange={(e) => upd(a.id, "bahia", e.target.value)} placeholder="En cola" /></Campo>}
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap", marginBottom: 12 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
