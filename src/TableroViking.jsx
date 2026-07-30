@@ -20,6 +20,8 @@ const POS_CODE = {
   "Aleta tras. izq.": "ALTI",
   "Aleta tras. der.": "ALTD",
   "Medallón": "MED",
+  "Quemacocos": "QC",
+  "Toldo panorámico": "TOL",
 };
 const GLASS_POSITIONS = Object.keys(POS_CODE);
 
@@ -32,7 +34,8 @@ const GRUPOS = {
   Delanteros: [...LAT_DEL, ...ALETA_DEL],
   Traseros: [...LAT_TRAS, ...ALETA_TRAS, "Medallón"],
 };
-GRUPOS.Todos = [...GRUPOS.Delanteros, ...GRUPOS.Traseros];
+const TECHO = ["Quemacocos", "Toldo panorámico"];
+GRUPOS.Todos = [...GRUPOS.Delanteros, ...GRUPOS.Traseros, ...TECHO];
 
 const COBERTURAS = {
   "2 laterales del.": { pos: [...LAT_DEL], cod: { "Viking": ["VK101"], "Viking Plus": ["VK102"] } },
@@ -42,7 +45,7 @@ const COBERTURAS = {
   "Parabrisas": { pos: ["Parabrisas"], cod: { "Viking": ["VK110"], "Viking Plus": ["VK110"] } },
   "Cristales completos": { pos: ["Parabrisas", ...LAT_DEL, ...LAT_TRAS, ...ALETA_DEL, "Medallón"], cod: { "Viking Plus": ["VK106", "VK108", "VK110"] }, soloPlus: true },
 };
-const KEVLAR_ZONES = ["Puertas del.", "Puertas tras.", "Poste A", "Poste B", "Poste C", "Poste D", "Costados", "Cajuela / 5ª puerta", "Área de carga"];
+const KEVLAR_ZONES = ["Puertas del.", "Puertas tras.", "Poste A", "Poste B", "Poste C", "Poste D", "Costados", "Toldo", "Cajuela / 5ª puerta", "Área de carga"];
 
 /* Orden del vidrio sin prefijo (VK-1042 → 1042) + clave, para igualar al código de Autoclave Viking. */
 const ordenCorta = (orden) => String(orden || "").replace(/^VK[-\s]?/i, "").trim();
@@ -144,6 +147,19 @@ const HITOS = [
 const HITO_DESMONTAJE = 1; // el carril de Kevlar se desbloquea al llegar aquí
 const KEVLAR_HITOS = ["Sin empezar", "Plantillas", "Instalando", "Kevlar listo"];
 const KEVLAR_SIG = ["Empecé plantillas", "Instalando", "Kevlar listo"];
+/* "EN MANO": vidrios que un socio comercial trae ya desmontados — Viking solo les hace el
+   proceso. No ocupan bahía y NO aplican las etapas de Desmontaje ni Montaje: el flujo las
+   salta solo ("Entregado" = el socio recoge sus vidrios). */
+const EN_MANO = "En mano";
+const NO_APLICA_EN_MANO = ["Desmontaje", "Montaje"];
+const noAplicaHito = (a, i) => a.tipo === EN_MANO && NO_APLICA_EN_MANO.indexOf(HITOS[i].n) >= 0;
+/* Siguiente etapa aplicable en la dirección dada (salta las que no aplican). */
+const proxHito = (a, dir) => {
+  const d = dir || 1;
+  let h = a.hito + d;
+  while (h > 0 && h < HITOS.length - 1 && noAplicaHito(a, h)) h += d;
+  return Math.max(0, Math.min(HITOS.length - 1, h));
+};
 /* Equipo real de Viking · San Jerónimo (Ficha de Puestos GAV, jul 2026).
    Cada rol del tablero se mapea a su(s) persona(s). El "Vendedor" VARÍA por unidad,
    así que no se fija aquí — se elige en el crew de cada auto. */
@@ -250,10 +266,11 @@ function horasPiso(a) {
   const nLat = LATERALES_OP.filter((p) => glass[p]).length;   // operables: ~3 h-persona c/u
   const nOtros = Math.max(0, nVid - nLat);                    // resto de vidrios: ~1.9 h c/u
   const nKevlar = (a.kevlar && a.kevlar.length) || 0;
+  const enMano = a.tipo === EN_MANO;                          // vidrios de socio: sin desmontaje ni montaje
   return {
-    desmontaje: nVid ? 7.7 : 0,                               // fijo por auto
+    desmontaje: nVid && !enMano ? 7.7 : 0,                    // fijo por auto
     armado: 1.26 * nVid,                                      // esmerilado+embolsado + armado de capas
-    montaje: 3.0 * nLat + 1.9 * nOtros,                       // el frente más caro (~12 h en 4 laterales)
+    montaje: enMano ? 0 : 3.0 * nLat + 1.9 * nOtros,          // el frente más caro (~12 h en 4 laterales)
     kevlar: nKevlar ? (2.8 * nKevlar + (a.kevlarNuevo ? 9.5 : 0)) : 0, // instalación + plantilla si es 1ª vez
   };
 }
@@ -506,7 +523,7 @@ function VistaTV({ autos }) {
   autos.forEach((a) => {
     if (entregado(a)) return;
     if (a.hito < HITOS.length - 1) {
-      const sig = HITOS[a.hito + 1];
+      const sig = HITOS[proxHito(a, 1)]; // salta etapas que no aplican (En mano)
       if (cola[sig.ow]) cola[sig.ow].push({ auto: a, etapa: sig.n });
     }
     if (a.kevlar.length && a.hito >= HITO_DESMONTAJE && a.kevlarHito < 3) {
@@ -601,6 +618,7 @@ function VistaAgenda({ autos }) {
   enProceso.forEach((a) => {
     let cursor = 0; // días hábiles acumulados desde hoy
     for (let h = a.hito + 1; h < HITOS.length; h++) {
+      if (noAplicaHito(a, h)) continue; // "En mano": sin desmontaje ni montaje
       const owner = HITOS[h].ow;
       const dia = Math.floor(cursor);
       if (dia < 5 && grid[owner]) grid[owner][dia].push({ auto: a, etapa: HITOS[h].n });
@@ -708,10 +726,12 @@ function Banda({ auto }) {
             <h3 style={{ margin: 0, fontSize: 19, fontWeight: 700, letterSpacing: "-0.01em", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{nombreAuto(auto)} <span style={{ fontWeight: 400, color: T.mut, fontSize: 14 }}>{auto.anio}</span></h3>
             {auto.bahia
               ? <span style={{ fontFamily: DISPLAY, fontSize: 9, letterSpacing: "0.16em", color: T.gold, border: `1px solid ${T.goldSoft}`, borderRadius: 3, padding: "2px 6px", flexShrink: 0 }}>{auto.bahia}</span>
-              : <span style={{ fontFamily: DISPLAY, fontSize: 9, letterSpacing: "0.16em", color: T.dim, border: `1px solid ${T.line2}`, borderRadius: 3, padding: "2px 6px", flexShrink: 0 }}>EN COLA</span>}
+              : auto.tipo === EN_MANO
+                ? <span style={{ fontFamily: DISPLAY, fontSize: 9, letterSpacing: "0.16em", color: T.teal, border: `1px solid ${T.teal}`, borderRadius: 3, padding: "2px 6px", flexShrink: 0 }}>EN MANO</span>
+                : <span style={{ fontFamily: DISPLAY, fontSize: 9, letterSpacing: "0.16em", color: T.dim, border: `1px solid ${T.line2}`, borderRadius: 3, padding: "2px 6px", flexShrink: 0 }}>EN COLA</span>}
             {esG && <span style={{ fontSize: 8.5, fontWeight: 700, letterSpacing: "0.14em", textTransform: "uppercase", color: "#0a0a0b", background: T.gold, borderRadius: 3, padding: "3px 6px", flexShrink: 0 }}>Garantía</span>}
           </div>
-          <div className="tnum" style={{ fontSize: 10.5, color: T.dim, marginTop: 3, letterSpacing: "0.03em" }}>{auto.placa} &nbsp;·&nbsp; {auto.orden}</div>
+          <div className="tnum" style={{ fontSize: 10.5, color: T.dim, marginTop: 3, letterSpacing: "0.03em" }}>{[auto.placa, auto.orden, auto.tipo === EN_MANO ? auto.cliente : ""].filter(Boolean).join("  ·  ")}</div>
         </div>
         <div style={{ textAlign: "right", flexShrink: 0 }}>
           <div style={{ display: "flex", alignItems: "baseline", gap: 8, justifyContent: "flex-end" }}>
@@ -823,14 +843,16 @@ function VistaTableta({ autos, setAutos, recargar }) {
     const max = tipoAccion === "hito" ? HITOS.length - 1 : 3;
     const previo = autos.find((a) => a.id === id);
     if (!previo) return;
-    const nuevoVal = Math.max(0, Math.min(max, previo[campo] + dir));
+    // "En mano" salta Desmontaje/Montaje: el destino puede estar a más de un paso.
+    const nuevoVal = tipoAccion === "hito" ? proxHito(previo, dir) : Math.max(0, Math.min(max, previo[campo] + dir));
+    const pasos = tipoAccion === "hito" ? Math.max(1, Math.abs(nuevoVal - previo.hito)) : 1;
     // Actualización optimista
     setAutos((p) => p.map((a) => (a.id === id ? { ...a, [campo]: nuevoVal } : a)));
     if (dir > 0) doFlash(id);
     if (MODO_DEMO) return;
     marcarPend(id, true);
     try {
-      await apiPost({ action: tipoAccion, id, dir });
+      for (let i = 0; i < pasos; i++) await apiPost({ action: tipoAccion, id, dir });
       await recargar(); // confirma con el servidor
     } catch (e) {
       // No adivinamos: pedimos al servidor el estado real y reconciliamos.
@@ -850,7 +872,7 @@ function VistaTableta({ autos, setAutos, recargar }) {
   // ¿Le toca a este rol el siguiente paso del auto? (Kevlar = carril activo)
   const tocaA = (a, rol) => {
     if (rol === "Kevlar") return a.kevlar.length > 0 && a.hito >= HITO_DESMONTAJE && a.kevlarHito < 3;
-    return a.hito < HITOS.length - 1 && HITOS[a.hito + 1].ow === rol;
+    return a.hito < HITOS.length - 1 && HITOS[proxHito(a, 1)].ow === rol;
   };
   const visibles = area === "Todos" ? enProceso : enProceso.filter((x) => tocaA(x, area));
 
@@ -885,7 +907,7 @@ function VistaTableta({ autos, setAutos, recargar }) {
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
                 <div>
                   <div style={{ fontSize: 19, fontWeight: 700 }}>{nombreAuto(a)} <span style={{ color: T.mut, fontWeight: 400, fontSize: 14 }}>{a.anio}</span></div>
-                  <div className="tnum" style={{ fontSize: 12, color: T.dim, marginTop: 3 }}>{a.orden} · {a.bahia || "En cola"}{a.tipo === "Garantía" ? "  · GARANTÍA" : ""}</div>
+                  <div className="tnum" style={{ fontSize: 12, color: T.dim, marginTop: 3 }}>{a.orden} · {a.bahia || (a.tipo === EN_MANO ? "En mano" : "En cola")}{a.tipo === "Garantía" ? "  · GARANTÍA" : ""}{a.tipo === EN_MANO && a.cliente ? " · " + a.cliente : ""}</div>
                 </div>
                 <div style={{ textAlign: "right" }}>
                   <div style={{ fontSize: 9.5, letterSpacing: "0.16em", color: T.dim, textTransform: "uppercase" }}>Etapa actual</div>
@@ -904,7 +926,7 @@ function VistaTableta({ autos, setAutos, recargar }) {
                 <button className="press" onClick={() => mover(a.id, "hito", 1)} disabled={esUltimo || bloqueaEntrega || ocupado}
                   style={{ flex: 1, cursor: esUltimo || bloqueaEntrega ? "not-allowed" : "pointer", border: "none", borderRadius: 12, padding: "18px 20px", fontFamily: BODY, fontSize: 17, fontWeight: 700,
                     background: esUltimo ? T.line : bloqueaEntrega ? T.line2 : T.gold, color: esUltimo || bloqueaEntrega ? T.dim : "#0a0a0b" }}>
-                  {esUltimo ? "✓ Entregado" : bloqueaEntrega ? "Falta terminar Kevlar" : "✓ " + HITOS[a.hito + 1].sig}
+                  {esUltimo ? "✓ Entregado" : bloqueaEntrega ? "Falta terminar Kevlar" : "✓ " + HITOS[proxHito(a, 1)].sig}
                 </button>
                 {a.hito > 0 && !esUltimo && (
                   <button className="press" onClick={() => mover(a.id, "hito", -1)} disabled={ocupado} title="Deshacer"
@@ -1054,8 +1076,9 @@ function Panel({ autos, setAutos, recargar }) {
             <div key={a.id} style={{ background: T.panel, border: `1px solid ${nuevo ? T.gold : T.line}`, borderRadius: 12, padding: 20, animation: nuevo ? "glow 1.6s ease-in-out 2" : "none" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
                 <Lbl>Ingreso</Lbl>
-                {["Nuevo", "Garantía"].map((t) => <button key={t} onClick={() => upd(a.id, "tipo", t)} style={S.chip(a.tipo === t)}>{t}</button>)}
+                {["Nuevo", "Garantía", EN_MANO].map((t) => <button key={t} onClick={() => upd(a.id, "tipo", t)} style={S.chip(a.tipo === t)}>{t}</button>)}
                 {esG && <span style={{ fontSize: 11.5, color: T.mut, marginLeft: 6 }}>Sin facturar · elige la etapa de arranque según la reparación</span>}
+                {a.tipo === EN_MANO && <span style={{ fontSize: 11.5, color: T.mut, marginLeft: 6 }}>Vidrios de socio, ya desmontados — sin bahía; el flujo salta desmontaje y montaje</span>}
                 <button onClick={() => eliminar(a.id)} style={{ ...S.ghost, marginLeft: "auto", color: "#c96a6a", borderColor: "rgba(201,106,106,.35)" }}>Eliminar</button>
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1.2fr .55fr .8fr .55fr", gap: 10, marginBottom: 10 }}>
@@ -1096,6 +1119,11 @@ function Panel({ autos, setAutos, recargar }) {
               </div>
               {/* Sin campo de cliente/dueño: el tablero no captura ni muestra datos del dueño.
                   La columna CLIENTE sigue en la hoja por compatibilidad, pero queda vacía. */}
+              {a.tipo === EN_MANO && (
+                <div style={{ marginBottom: 10 }}>
+                  <Campo label="Socio comercial / referencia"><input style={S.inp} value={a.cliente} onChange={(e) => upd(a.id, "cliente", e.target.value)} placeholder="ej. Blindajes XYZ — 3 vidrios de Suburban" /></Campo>
+                </div>
+              )}
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr .8fr", gap: 10, marginBottom: 8 }}>
                 <Campo label="Orden"><input style={S.inp} value={a.orden} onChange={(e) => upd(a.id, "orden", e.target.value)} /></Campo>
                 <Campo label="Entrega"><input style={S.inp} type="date" value={a.entregaFecha} onChange={(e) => upd(a.id, "entregaFecha", e.target.value)} /></Campo>
