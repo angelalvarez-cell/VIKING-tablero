@@ -726,6 +726,11 @@ function Banda({ auto }) {
           <div>
             <div style={{ fontSize: 9, letterSpacing: "0.14em", color: T.dim, textTransform: "uppercase", marginBottom: 3 }}>Motivo de garantía</div>
             <div style={{ fontSize: 12.5, color: T.ink, fontWeight: 600, lineHeight: 1.35 }}>{auto.motivo || "—"}</div>
+            {vidriosDe(auto).length > 0 && (
+              <div className="tnum" style={{ fontSize: 11.5, color: T.mut, marginTop: 5 }}>
+                Re-procesar: {vidriosDe(auto).map((p) => codigoVidrio(auto.orden, p) || p).join(" · ")}
+              </div>
+            )}
           </div>
         ) : (() => {
           const vid = vidriosDe(auto);
@@ -1118,7 +1123,31 @@ function Panel({ autos, setAutos, recargar }) {
               })()}
 
               {esG ? (
-                <div style={{ marginBottom: 14 }}><Campo label="Motivo de garantía"><input style={S.inp} value={a.motivo} onChange={(e) => upd(a.id, "motivo", e.target.value)} placeholder="ej. Delaminación lateral tras. izq. — deslaminar y rehacer" /></Campo></div>
+                <div style={{ marginBottom: 14 }}>
+                  <div style={{ marginBottom: 12 }}><Campo label="Motivo de garantía"><input style={S.inp} value={a.motivo} onChange={(e) => upd(a.id, "motivo", e.target.value)} placeholder="ej. Delaminación lateral tras. izq. — deslaminar y rehacer" /></Campo></div>
+                  {/* En garantía también se marcan los vidrios afectados: alimentan la columna
+                      VIDRIOS (app del autoclave), el estimador de carga y el kit a re-procesar. */}
+                  <div style={{ background: T.bg, border: `1px solid ${T.line}`, borderRadius: 10, padding: 14 }}>
+                    <Lbl style={{ display: "block", marginBottom: 6 }}>Vidrios a re-procesar</Lbl>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                      {GLASS_POSITIONS.map((q) => (
+                        <button key={q} onClick={() => tglGlass(a.id, q)} style={S.chip(!!a.glass[q])} title={q}>
+                          <span className="tnum" style={{ fontWeight: 700 }}>{POS_CODE[q]}</span> <span style={{ opacity: 0.75 }}>{q}</span>
+                        </button>
+                      ))}
+                    </div>
+                    <Lbl style={{ display: "block", margin: "12px 0 6px" }}>Kevlar a re-instalar (si aplica)</Lbl>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                      {KEVLAR_ZONES.map((z) => <button key={z} onClick={() => tgl(a.id, "kevlar", z)} style={S.chip(a.kevlar.includes(z))}>{z}</button>)}
+                    </div>
+                    <div style={{ marginTop: 12, paddingTop: 10, borderTop: `1px solid ${T.line}`, fontSize: 11.5, color: T.mut }}>
+                      Se escribirá en la columna <b className="tnum" style={{ color: T.gold }}>VIDRIOS</b>:{" "}
+                      {clavesVidrios(a)
+                        ? <span className="tnum" style={{ color: T.ink }}>{clavesVidrios(a)}</span>
+                        : <span style={{ fontStyle: "italic", color: T.dim }}>sin vidrios seleccionados</span>}
+                    </div>
+                  </div>
+                </div>
               ) : (
                 <>
                   <div style={{ background: T.bg, border: `1px solid ${T.line}`, borderRadius: 10, padding: 14, marginBottom: 12 }}>
