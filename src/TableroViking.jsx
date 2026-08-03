@@ -316,9 +316,12 @@ function sumarDiasHabiles(desde, dias) {
   while (restan > 0) { d.setDate(d.getDate() + 1); const dow = d.getDay(); if (dow !== 0 && dow !== 6) restan--; }
   return d;
 }
-/* Días de cada recurso para sacar al auto objetivo + su cola. El recurso que MANDA es el mayor. */
+/* Días de cada recurso para sacar al auto objetivo + su cola. El recurso que MANDA es el mayor.
+   URGE (prioridad): el auto se calcula como si fuera el PRIMERO de la fila — solo espera a
+   otros urgentes. Los demás autos siguen calculando con toda la cola (incluido el urgente),
+   así que sus fechas ya reflejan que este pasó adelante. */
 function diasPorRecurso(objetivo, autos) {
-  const cola = autos.filter((a) => !entregado(a) && a.id !== objetivo.id).concat([objetivo]);
+  const cola = autos.filter((a) => !entregado(a) && a.id !== objetivo.id && (!objetivo.prioridad || a.prioridad)).concat([objetivo]);
   const pisoH = cola.reduce((s, a) => s + pisoRestante(a), 0);
   const digH = cola.reduce((s, a) => s + digitalRestante(a), 0);
   const ciclos = cola.reduce((s, a) => s + ciclosDe(a), 0);
@@ -342,6 +345,18 @@ function fechaSugerida(objetivo, autos) {
 /* ================= Capa de datos (Sheets o demo) ================= */
 const MODO_DEMO = !BACKEND_URL;
 
+/* Normaliza lo que venga del backend al formato EXACTO que exigen los inputs de Control:
+   fecha "aaaa-mm-dd" y hora "HH:mm". (Google Sheets a veces regresa las fechas como texto
+   crudo de Date; la TV lo tolera, pero un <input type="date"> con formato incorrecto se
+   queda vacío — por eso en admin "todas" las fechas se veían iguales.) */
+const normFecha = (v) => {
+  const d = aFecha(v);
+  if (!d) return "";
+  const p = (n) => String(n).padStart(2, "0");
+  return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate());
+};
+const normHora = (v) => { const m = String(v || "").match(/(\d{1,2}):(\d{2})/); return m ? String(m[1]).padStart(2, "0") + ":" + m[2] : ""; };
+
 async function apiListar() {
   const intento = async () => {
     const r = await fetch(BACKEND_URL);
@@ -351,7 +366,7 @@ async function apiListar() {
   try { j = await intento(); }
   catch (netErr) { await new Promise((res) => setTimeout(res, 600)); j = await intento(); }
   if (!j.ok) throw new Error(j.error || "Error al leer");
-  return j.autos;
+  return j.autos.map((a) => ({ ...a, entregaFecha: normFecha(a.entregaFecha), entregaHora: normHora(a.entregaHora) }));
 }
 async function apiPost(payload) {
   const intento = async () => {
@@ -486,7 +501,7 @@ export default function TableroViking() {
 const ROLES = ["Vendedor", "Técnico Digital", "Vidrios", "Líder", "Kevlar"];
 
 function VistaTV({ autos }) {
-  const claveOrden = (a) => { const d = diasPara(a.entregaFecha); return d === null ? Infinity : d; };
+  const claveOrden = (a) => { const d = diasPara(a.entregaFecha); const base = d === null ? Infinity : d; return a.prioridad ? base - 10000 : base; }; // URGE primero
   const orden = [...autos].filter((a) => !entregado(a)).sort((a, b) => claveOrden(a) - claveOrden(b));
 
   /* Slideshow: 2 autos grandes por pantalla, rota cada 20 s (urgentes primero por el orden). */
@@ -601,7 +616,7 @@ function VistaAgenda({ autos }) {
   const dias = [];
   { const d = new Date(); d.setHours(0, 0, 0, 0); while (dias.length < 5) { const dow = d.getDay(); if (dow !== 0 && dow !== 6) dias.push(new Date(d)); d.setDate(d.getDate() + 1); } }
   const hoyISO = new Date().toISOString().slice(0, 10);
-  const claveOrden = (a) => { const d = diasPara(a.entregaFecha); return d === null ? Infinity : d; };
+  const claveOrden = (a) => { const d = diasPara(a.entregaFecha); const base = d === null ? Infinity : d; return a.prioridad ? base - 10000 : base; }; // URGE primero
   const enProceso = [...autos].filter((a) => !entregado(a)).sort((a, b) => claveOrden(a) - claveOrden(b));
 
   const filas = ["Vendedor", "Técnico Digital", "Vidrios", "Líder", "Kevlar"];
@@ -739,6 +754,7 @@ function Banda({ auto }) {
                 ? <span style={{ fontFamily: DISPLAY, fontSize: 9, letterSpacing: "0.16em", color: T.teal, border: `1px solid ${T.teal}`, borderRadius: 3, padding: "2px 6px", flexShrink: 0 }}>EN MANO</span>
                 : <span style={{ fontFamily: DISPLAY, fontSize: 9, letterSpacing: "0.16em", color: T.dim, border: `1px solid ${T.line2}`, borderRadius: 3, padding: "2px 6px", flexShrink: 0 }}>EN COLA</span>}
             {esG && <span style={{ fontSize: 8.5, fontWeight: 700, letterSpacing: "0.14em", textTransform: "uppercase", color: "#0a0a0b", background: T.gold, borderRadius: 3, padding: "3px 6px", flexShrink: 0 }}>Garantía</span>}
+            {auto.prioridad && <span style={{ fontSize: 8.5, fontWeight: 700, letterSpacing: "0.14em", textTransform: "uppercase", color: "#fff", background: "#c25454", borderRadius: 3, padding: "3px 6px", flexShrink: 0, animation: "breathe 1.6s ease-in-out infinite" }}>⚡ Urge</span>}
           </div>
           <div className="tnum" style={{ fontSize: 10.5, color: T.dim, marginTop: 3, letterSpacing: "0.03em" }}>{[auto.placa, auto.orden, auto.tipo === EN_MANO ? auto.cliente : ""].filter(Boolean).join("  ·  ")}</div>
         </div>
@@ -878,7 +894,7 @@ function VistaTableta({ autos, setAutos, recargar }) {
     }
   };
 
-  const claveOrden = (a) => { const d = diasPara(a.entregaFecha); return d === null ? Infinity : d; };
+  const claveOrden = (a) => { const d = diasPara(a.entregaFecha); const base = d === null ? Infinity : d; return a.prioridad ? base - 10000 : base; }; // URGE primero
   const enProceso = [...autos].filter((a) => !entregado(a)).sort((a, b) => claveOrden(a) - claveOrden(b));
   const entregadosSemana = autos.filter(entregado).length;
 
@@ -925,7 +941,7 @@ function VistaTableta({ autos, setAutos, recargar }) {
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
                 <div>
                   <div style={{ fontSize: 19, fontWeight: 700 }}>{nombreAuto(a)} <span style={{ color: T.mut, fontWeight: 400, fontSize: 14 }}>{a.anio}</span></div>
-                  <div className="tnum" style={{ fontSize: 12, color: T.dim, marginTop: 3 }}>{a.orden} · {a.bahia || (a.tipo === EN_MANO ? "En mano" : "En cola")}{a.tipo === "Garantía" ? "  · GARANTÍA" : ""}{a.tipo === EN_MANO && a.cliente ? " · " + a.cliente : ""}</div>
+                  <div className="tnum" style={{ fontSize: 12, color: T.dim, marginTop: 3 }}>{a.orden} · {a.bahia || (a.tipo === EN_MANO ? "En mano" : "En cola")}{a.tipo === "Garantía" ? "  · GARANTÍA" : ""}{a.tipo === EN_MANO && a.cliente ? " · " + a.cliente : ""}{a.prioridad ? <span style={{ color: "#e07a7a", fontWeight: 700 }}>  · ⚡ URGE</span> : null}</div>
                 </div>
                 <div style={{ textAlign: "right" }}>
                   <div style={{ fontSize: 9.5, letterSpacing: "0.16em", color: T.dim, textTransform: "uppercase" }}>Etapa actual</div>
@@ -1105,7 +1121,9 @@ function Panel({ autos, setAutos, recargar }) {
                 {["Nuevo", "Garantía", EN_MANO].map((t) => <button key={t} onClick={() => setTipo(a.id, t)} style={S.chip(a.tipo === t)}>{t}</button>)}
                 {esG && <span style={{ fontSize: 11.5, color: T.mut, marginLeft: 6 }}>Sin facturar · elige la etapa de arranque según la reparación</span>}
                 {a.tipo === EN_MANO && <span style={{ fontSize: 11.5, color: T.mut, marginLeft: 6 }}>Vidrios de socio, ya desmontados — sin bahía; el flujo salta desmontaje y montaje</span>}
-                <button onClick={() => eliminar(a.id)} style={{ ...S.ghost, marginLeft: "auto", color: "#c96a6a", borderColor: "rgba(201,106,106,.35)" }}>Eliminar</button>
+                <button onClick={() => upd(a.id, "prioridad", !a.prioridad)} title="Este auto pasa al frente de la fila"
+                  style={{ ...S.chip(!!a.prioridad), marginLeft: "auto", borderColor: a.prioridad ? "#e07a7a" : T.line2, color: a.prioridad ? "#e07a7a" : T.mut, background: a.prioridad ? "rgba(224,122,122,.12)" : "transparent", fontWeight: 700 }}>⚡ Urge</button>
+                <button onClick={() => eliminar(a.id)} style={{ ...S.ghost, color: "#c96a6a", borderColor: "rgba(201,106,106,.35)" }}>Eliminar</button>
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1.2fr .55fr .8fr .55fr", gap: 10, marginBottom: 10 }}>
                 <Campo label="Marca">
@@ -1166,6 +1184,7 @@ function Panel({ autos, setAutos, recargar }) {
                   <div style={{ marginBottom: 14 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", fontSize: 12.5, color: T.mut }}>
                       <span>Sugerencia por carga del taller: <b style={{ color: T.gold, textTransform: "capitalize" }}>{fechaCorta(sug)}</b> <span style={{ color: T.dim }}>(estimado)</span></span>
+                      {a.prioridad && <span style={{ color: "#e07a7a", fontWeight: 600 }}>⚡ URGE — calculado como el primero de la fila</span>}
                       {!coincide && <button onClick={() => upd(a.id, "entregaFecha", sug)} style={S.ghost}>Usar fecha sugerida</button>}
                       {coincide && <span style={{ color: T.teal }}>✓ en uso</span>}
                     </div>
