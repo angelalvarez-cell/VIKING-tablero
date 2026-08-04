@@ -230,6 +230,15 @@ function aFecha(f) {
   return isNaN(d.getTime()) ? null : d;
 }
 const diasPara = (f) => { const d = aFecha(f); if (!d) return null; const t = new Date(d); t.setHours(18, 0, 0, 0); return Math.ceil((t - hoy) / 86400000); };
+/* Momento exacto de entrega (fecha + hora) — es la llave de orden del tablero:
+   lo más próximo primero. Sin hora se asume 6 pm; sin fecha se va al final. */
+const tsEntrega = (a) => {
+  const d = aFecha(a.entregaFecha);
+  if (!d) return Infinity;
+  const m = String(a.entregaHora || "").match(/(\d{1,2}):(\d{2})/);
+  d.setHours(m ? Number(m[1]) : 18, m ? Number(m[2]) : 0, 0, 0);
+  return d.getTime();
+};
 const kevlarListo = (a) => a.kevlar.length === 0 || a.kevlarHito >= 3;
 const entregado = (a) => a.hito >= HITOS.length - 1 && kevlarListo(a);
 function urgencia(a) { if (entregado(a)) return "listo"; const d = diasPara(a.entregaFecha); if (d === null) return "enTiempo"; if (d <= 1) return "urgente"; if (d <= 3) return "proximo"; return "enTiempo"; }
@@ -501,7 +510,8 @@ export default function TableroViking() {
 const ROLES = ["Vendedor", "Técnico Digital", "Vidrios", "Líder", "Kevlar"];
 
 function VistaTV({ autos }) {
-  const claveOrden = (a) => { const d = diasPara(a.entregaFecha); const base = d === null ? Infinity : d; return a.prioridad ? base - 10000 : base; }; // URGE primero
+  // Orden del tablero: bloque URGE arriba; después, entrega más próxima (fecha + hora) primero.
+  const claveOrden = (a) => (a.prioridad ? tsEntrega(a) - 1e13 : tsEntrega(a));
   const orden = [...autos].filter((a) => !entregado(a)).sort((a, b) => claveOrden(a) - claveOrden(b));
 
   /* Slideshow: 2 autos grandes por pantalla, rota cada 20 s (urgentes primero por el orden). */
@@ -616,7 +626,8 @@ function VistaAgenda({ autos }) {
   const dias = [];
   { const d = new Date(); d.setHours(0, 0, 0, 0); while (dias.length < 5) { const dow = d.getDay(); if (dow !== 0 && dow !== 6) dias.push(new Date(d)); d.setDate(d.getDate() + 1); } }
   const hoyISO = new Date().toISOString().slice(0, 10);
-  const claveOrden = (a) => { const d = diasPara(a.entregaFecha); const base = d === null ? Infinity : d; return a.prioridad ? base - 10000 : base; }; // URGE primero
+  // Orden del tablero: bloque URGE arriba; después, entrega más próxima (fecha + hora) primero.
+  const claveOrden = (a) => (a.prioridad ? tsEntrega(a) - 1e13 : tsEntrega(a));
   const enProceso = [...autos].filter((a) => !entregado(a)).sort((a, b) => claveOrden(a) - claveOrden(b));
 
   const filas = ["Vendedor", "Técnico Digital", "Vidrios", "Líder", "Kevlar"];
@@ -894,7 +905,8 @@ function VistaTableta({ autos, setAutos, recargar }) {
     }
   };
 
-  const claveOrden = (a) => { const d = diasPara(a.entregaFecha); const base = d === null ? Infinity : d; return a.prioridad ? base - 10000 : base; }; // URGE primero
+  // Orden del tablero: bloque URGE arriba; después, entrega más próxima (fecha + hora) primero.
+  const claveOrden = (a) => (a.prioridad ? tsEntrega(a) - 1e13 : tsEntrega(a));
   const enProceso = [...autos].filter((a) => !entregado(a)).sort((a, b) => claveOrden(a) - claveOrden(b));
   const entregadosSemana = autos.filter(entregado).length;
 
@@ -1009,6 +1021,8 @@ function Panel({ autos, setAutos, recargar }) {
   const [intento, setIntento] = useState("");
   const [nuevoId, setNuevoId] = useState(null);
   const [guardando, setGuardando] = useState({});
+  const [abiertos, setAbiertos] = useState({}); // entregados: colapsados salvo que se abran
+  const toggleAbierto = (id) => setAbiertos((o) => ({ ...o, [id]: !o[id] }));
   const abierto = MODO_DEMO || clave !== "";
 
   if (!abierto) {
@@ -1102,6 +1116,14 @@ function Panel({ autos, setAutos, recargar }) {
     try { await apiPost({ action: "eliminar", clave, id }); }
     catch (e) { setGuardando((g) => ({ ...g, [id]: "✗ No se pudo eliminar" })); }
   };
+  // Archivar: el auto entregado sale de TODAS las vistas, pero su fila queda en la hoja
+  // (historial para el análisis de tiempos). No es eliminar.
+  const archivar = async (id) => {
+    if (MODO_DEMO) { setAutos((p) => p.filter((a) => a.id !== id)); return; }
+    setGuardando((g) => ({ ...g, [id]: "…" }));
+    try { await apiPost({ action: "archivar", clave, id }); setAutos((p) => p.filter((a) => a.id !== id)); }
+    catch (e) { setGuardando((g) => ({ ...g, [id]: "✗ " + e.message })); }
+  };
 
   return (
     <main style={{ maxWidth: 980, margin: "0 auto", padding: "26px 34px 80px" }}>
@@ -1111,18 +1133,44 @@ function Panel({ autos, setAutos, recargar }) {
         </p>
         <button onClick={agregar} style={S.gold}>+ Agregar auto</button>
       </div>
+      {/* Mismo orden que la TV: lo nuevo sin guardar arriba, luego URGE, luego entrega más
+          próxima; los entregados (ya no relevantes hoy) se van hasta el final. */}
       <div style={{ display: "grid", gap: 16 }}>
-        {autos.map((a) => {
+        {[...autos].sort((x, y) => {
+          if (!!x._local !== !!y._local) return x._local ? -1 : 1;
+          if (entregado(x) !== entregado(y)) return entregado(x) ? 1 : -1;
+          if (!!x.prioridad !== !!y.prioridad) return x.prioridad ? -1 : 1;
+          return tsEntrega(x) - tsEntrega(y);
+        }).map((a) => {
           const esG = a.tipo === "Garantía", nuevo = a.id === nuevoId;
+          // Entregado = fuera del día a día: se muestra en una sola línea hasta que lo abras.
+          if (entregado(a) && !abiertos[a.id]) return (
+            <div key={a.id} style={{ background: T.panel, border: `1px solid ${T.line}`, borderRadius: 12, padding: "12px 18px", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", opacity: 0.6 }}>
+              <span style={{ fontSize: 9.5, letterSpacing: "0.14em", textTransform: "uppercase", color: T.teal, border: `1px solid rgba(90,160,138,.45)`, borderRadius: 3, padding: "2px 6px" }}>Entregado</span>
+              <span style={{ fontSize: 14, fontWeight: 600 }}>{nombreAuto(a)}</span>
+              <span className="tnum" style={{ fontSize: 11.5, color: T.dim }}>{a.orden}{a.placa ? " · " + a.placa : ""} · {fechaCorta(a.entregaFecha)}</span>
+              <span style={{ fontSize: 11, color: T.dim, marginLeft: "auto" }}>se archiva solo a las 24 h</span>
+              <button onClick={() => toggleAbierto(a.id)} style={S.ghost}>Abrir</button>
+              <button onClick={() => archivar(a.id)} style={{ ...S.ghost, color: T.teal, borderColor: "rgba(90,160,138,.45)" }}>Archivar ✓</button>
+              {guardando[a.id] ? <span style={{ fontSize: 12, color: T.mut }}>{guardando[a.id]}</span> : null}
+            </div>
+          );
           return (
-            <div key={a.id} style={{ background: T.panel, border: `1px solid ${nuevo ? T.gold : T.line}`, borderRadius: 12, padding: 20, animation: nuevo ? "glow 1.6s ease-in-out 2" : "none" }}>
+            <div key={a.id} style={{ background: T.panel, border: `1px solid ${nuevo ? T.gold : T.line}`, borderRadius: 12, padding: 20, animation: nuevo ? "glow 1.6s ease-in-out 2" : "none", opacity: entregado(a) && !nuevo ? 0.55 : 1 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
                 <Lbl>Ingreso</Lbl>
                 {["Nuevo", "Garantía", EN_MANO].map((t) => <button key={t} onClick={() => setTipo(a.id, t)} style={S.chip(a.tipo === t)}>{t}</button>)}
                 {esG && <span style={{ fontSize: 11.5, color: T.mut, marginLeft: 6 }}>Sin facturar · elige la etapa de arranque según la reparación</span>}
                 {a.tipo === EN_MANO && <span style={{ fontSize: 11.5, color: T.mut, marginLeft: 6 }}>Vidrios de socio, ya desmontados — sin bahía; el flujo salta desmontaje y montaje</span>}
+                {entregado(a) && (
+                  <>
+                    <button onClick={() => toggleAbierto(a.id)} style={{ ...S.ghost, marginLeft: "auto" }}>Cerrar</button>
+                    <button onClick={() => archivar(a.id)} title="Sale de todas las vistas; la fila queda en la hoja como historial"
+                      style={{ ...S.ghost, color: T.teal, borderColor: "rgba(90,160,138,.45)" }}>Archivar ✓</button>
+                  </>
+                )}
                 <button onClick={() => upd(a.id, "prioridad", !a.prioridad)} title="Este auto pasa al frente de la fila"
-                  style={{ ...S.chip(!!a.prioridad), marginLeft: "auto", borderColor: a.prioridad ? "#e07a7a" : T.line2, color: a.prioridad ? "#e07a7a" : T.mut, background: a.prioridad ? "rgba(224,122,122,.12)" : "transparent", fontWeight: 700 }}>⚡ Urge</button>
+                  style={{ ...S.chip(!!a.prioridad), marginLeft: entregado(a) ? 0 : "auto", borderColor: a.prioridad ? "#e07a7a" : T.line2, color: a.prioridad ? "#e07a7a" : T.mut, background: a.prioridad ? "rgba(224,122,122,.12)" : "transparent", fontWeight: 700 }}>⚡ Urge</button>
                 <button onClick={() => eliminar(a.id)} style={{ ...S.ghost, color: "#c96a6a", borderColor: "rgba(201,106,106,.35)" }}>Eliminar</button>
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1.2fr .55fr .8fr .55fr", gap: 10, marginBottom: 10 }}>
