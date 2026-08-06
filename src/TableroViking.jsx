@@ -133,6 +133,8 @@ function detectTipo(model) {
 }
 const tipoDe = (marca, modelo) => detectTipo(modelo);
 const nombreAuto = (a) => [a.marca, a.modelo].filter(Boolean).join(" ") || "Auto sin nombre";
+/* En la hoja la bahía se guarda como "B3"; en pantalla se lee completo: "BAHÍA 3". */
+const bahiaTexto = (b) => { const n = String(b || "").replace(/\D/g, ""); return n ? "Bahía " + n : ""; };
 
 const HITOS = [
   { n: "Ingresado", ow: "Vendedor", sig: "Ingresar" },
@@ -349,6 +351,37 @@ function fechaSugerida(objetivo, autos) {
   const d = diasPorRecurso(objetivo, autos);
   const dias = Math.max(d.Piso, d["Técnico Digital"], d.Autoclave);
   return sumarDiasHabiles(new Date(), dias).toISOString().slice(0, 10);
+}
+/* Días hábiles estimados para sacar un auto dentro de un escenario dado (lista de la cola). */
+function diasEnEscenario(objetivo, cola) {
+  const pisoH = cola.reduce((s, a) => s + pisoRestante(a), 0);
+  const digH = cola.reduce((s, a) => s + digitalRestante(a), 0);
+  const ciclos = cola.reduce((s, a) => s + ciclosDe(a), 0);
+  return Math.max((pisoH / PISO_HRS_SEM) * 5, (digH / DIGITAL_HRS_SEM) * 5, (ciclos / CICLOS_SEM) * 5);
+}
+/* ===== "¿Qué pasa si adelanto este coche?" =====
+   Compara el escenario ACTUAL contra uno donde `objetivo` pasa al frente de la fila.
+   Devuelve cuántos días GANA el objetivo y a qué autos les pega (y cuánto), para poder
+   negociar la fecha con el cliente sabiendo el costo real. */
+function impactoAdelantar(objetivo, autos) {
+  const activos = autos.filter((a) => !entregado(a));
+  if (activos.length < 2) return null;
+  const orden = [...activos].sort((a, b) => tsEntrega(a) - tsEntrega(b)); // fila de hoy
+  const idx = orden.findIndex((a) => a.id === objetivo.id);
+  if (idx <= 0) return null; // ya va primero: nada que adelantar
+  const antes = {}, despues = {};
+  // ACTUAL: cada auto espera a los que van delante de él (más él mismo)
+  orden.forEach((a, i) => { antes[a.id] = diasEnEscenario(a, orden.slice(0, i + 1)); });
+  // ESCENARIO: el objetivo se mueve al frente
+  const nuevo = [objetivo, ...orden.filter((a) => a.id !== objetivo.id)];
+  nuevo.forEach((a, i) => { despues[a.id] = diasEnEscenario(a, nuevo.slice(0, i + 1)); });
+  const gana = Math.round(antes[objetivo.id] - despues[objetivo.id]);
+  const afectados = orden
+    .filter((a) => a.id !== objetivo.id)
+    .map((a) => ({ auto: a, dias: Math.round(despues[a.id] - antes[a.id]) }))
+    .filter((x) => x.dias > 0);
+  if (gana <= 0 && !afectados.length) return null;
+  return { gana, afectados, fecha: sumarDiasHabiles(new Date(), despues[objetivo.id]).toISOString().slice(0, 10) };
 }
 
 /* ================= Capa de datos (Sheets o demo) ================= */
@@ -760,7 +793,7 @@ function Banda({ auto }) {
           <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
             <h3 style={{ margin: 0, fontSize: 19, fontWeight: 700, letterSpacing: "-0.01em", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{nombreAuto(auto)} <span style={{ fontWeight: 400, color: T.mut, fontSize: 14 }}>{auto.anio}</span></h3>
             {auto.bahia
-              ? <span style={{ fontFamily: DISPLAY, fontSize: 9, letterSpacing: "0.16em", color: T.gold, border: `1px solid ${T.goldSoft}`, borderRadius: 3, padding: "2px 6px", flexShrink: 0 }}>{auto.bahia}</span>
+              ? <span style={{ fontFamily: DISPLAY, fontSize: 9, letterSpacing: "0.16em", color: T.gold, border: `1px solid ${T.goldSoft}`, borderRadius: 3, padding: "2px 6px", flexShrink: 0, textTransform: "uppercase" }}>{bahiaTexto(auto.bahia)}</span>
               : auto.tipo === EN_MANO
                 ? <span style={{ fontFamily: DISPLAY, fontSize: 9, letterSpacing: "0.16em", color: T.teal, border: `1px solid ${T.teal}`, borderRadius: 3, padding: "2px 6px", flexShrink: 0 }}>EN MANO</span>
                 : <span style={{ fontFamily: DISPLAY, fontSize: 9, letterSpacing: "0.16em", color: T.dim, border: `1px solid ${T.line2}`, borderRadius: 3, padding: "2px 6px", flexShrink: 0 }}>EN COLA</span>}
@@ -953,7 +986,7 @@ function VistaTableta({ autos, setAutos, recargar }) {
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
                 <div>
                   <div style={{ fontSize: 19, fontWeight: 700 }}>{nombreAuto(a)} <span style={{ color: T.mut, fontWeight: 400, fontSize: 14 }}>{a.anio}</span></div>
-                  <div className="tnum" style={{ fontSize: 12, color: T.dim, marginTop: 3 }}>{a.orden} · {a.bahia || (a.tipo === EN_MANO ? "En mano" : "En cola")}{a.tipo === "Garantía" ? "  · GARANTÍA" : ""}{a.tipo === EN_MANO && a.cliente ? " · " + a.cliente : ""}{a.prioridad ? <span style={{ color: "#e07a7a", fontWeight: 700 }}>  · ⚡ URGE</span> : null}</div>
+                  <div className="tnum" style={{ fontSize: 12, color: T.dim, marginTop: 3 }}>{a.orden} · {bahiaTexto(a.bahia) || (a.tipo === EN_MANO ? "En mano" : "En cola")}{a.tipo === "Garantía" ? "  · GARANTÍA" : ""}{a.tipo === EN_MANO && a.cliente ? " · " + a.cliente : ""}{a.prioridad ? <span style={{ color: "#e07a7a", fontWeight: 700 }}>  · ⚡ URGE</span> : null}</div>
                 </div>
                 <div style={{ textAlign: "right" }}>
                   <div style={{ fontSize: 9.5, letterSpacing: "0.16em", color: T.dim, textTransform: "uppercase" }}>Etapa actual</div>
@@ -1194,7 +1227,22 @@ function Panel({ autos, setAutos, recargar }) {
                 <Campo label="Placa"><input style={S.inp} value={a.placa} onChange={(e) => upd(a.id, "placa", e.target.value)} /></Campo>
                 {a.tipo === EN_MANO
                   ? <Campo label="Bahía"><div style={{ ...S.inp, display: "flex", alignItems: "center", color: T.dim, fontStyle: "italic", border: `1px dashed ${T.line2}`, background: "transparent" }}>No aplica</div></Campo>
-                  : <Campo label="Bahía (vacía = en cola)"><input style={S.inp} value={a.bahia} onChange={(e) => upd(a.id, "bahia", e.target.value)} placeholder="En cola" /></Campo>}
+                  : (
+                    /* Solo se captura el NÚMERO; la palabra "Bahía" la pone el sistema.
+                       Sin número = En cola. En la hoja se guarda "B3" para no romper nada. */
+                    <Campo label="Bahía">
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <span style={{ fontSize: 12.5, color: T.mut, whiteSpace: "nowrap" }}>Bahía</span>
+                        <input style={{ ...S.inp, width: 70, textAlign: "center", fontWeight: 700 }} inputMode="numeric"
+                          value={String(a.bahia || "").replace(/\D/g, "")}
+                          onChange={(e) => { const n = e.target.value.replace(/\D/g, ""); upd(a.id, "bahia", n ? "B" + n : ""); }}
+                          placeholder="—" />
+                        <span style={{ fontSize: 11.5, color: T.dim }}>
+                          {String(a.bahia || "").replace(/\D/g, "") ? "" : "sin número = En cola"}
+                        </span>
+                      </div>
+                    </Campo>
+                  )}
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap", marginBottom: 12 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -1241,6 +1289,24 @@ function Panel({ autos, setAutos, recargar }) {
                       &nbsp;·&nbsp; Piso ~{hp.toFixed(0)} h &nbsp;·&nbsp; Digital ~{hd.toFixed(0)} h
                       &nbsp;·&nbsp; {a.vidriosNuevo ? "modelo NUEVO (sin escanear)" : "modelo REPETIDO (en el sistema)"}
                     </div>
+                    {(() => {
+                      const imp = impactoAdelantar(a, autos);
+                      if (!imp) return null;
+                      return (
+                        <div style={{ marginTop: 8, padding: "9px 12px", border: `1px solid ${T.line2}`, borderLeft: `3px solid ${T.blue}`, borderRadius: 8, background: "rgba(125,167,196,.06)", fontSize: 12 }}>
+                          <div style={{ color: T.ink }}>
+                            <b style={{ color: T.blue }}>Si lo adelantas al frente de la fila:</b>{" "}
+                            saldría <b style={{ textTransform: "capitalize" }}>{fechaCorta(imp.fecha)}</b>
+                            {imp.gana > 0 && <span style={{ color: T.teal }}> — {imp.gana} {imp.gana === 1 ? "día" : "días"} antes</span>}
+                          </div>
+                          <div style={{ color: T.mut, marginTop: 3 }}>
+                            {imp.afectados.length
+                              ? <>Costo: {imp.afectados.map((x) => `${nombreAuto(x.auto)} (${x.auto.orden}) +${x.dias}d`).join(" · ")}</>
+                              : <>Sin costo para los demás.</>}
+                          </div>
+                        </div>
+                      );
+                    })()}
                   </div>
                 );
               })()}
