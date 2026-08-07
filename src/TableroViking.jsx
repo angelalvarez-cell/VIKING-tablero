@@ -174,8 +174,16 @@ const TAREA = {
   "Entregado": "Entrega",
 };
 const etapaEnProceso = (a) => (a.hito >= HITOS.length - 1 ? HITOS[HITOS.length - 1] : HITOS[proxHito(a, 1)]);
-const tareaQueSigue = (a) => TAREA[etapaEnProceso(a).n] || etapaEnProceso(a).n;
 const etapaTerminada = (a) => HITOS[a.hito];
+/* FASE ACTUAL = donde está parado el coche (lo que falta por hacerle ahora).
+   FASE SIGUIENTE = la de después, para saber a dónde va. */
+const faseActual = (a) => TAREA[etapaEnProceso(a).n] || etapaEnProceso(a).n;
+const faseSiguiente = (a) => {
+  const h = proxHito(a, 1);
+  if (h >= HITOS.length - 1) return null; // ya no hay siguiente
+  const sig = HITOS[proxHito({ ...a, hito: h }, 1)];
+  return TAREA[sig.n] || sig.n;
+};
 /* Siguiente etapa aplicable en la dirección dada (salta las que no aplican). */
 const proxHito = (a, dir) => {
   const d = dir || 1;
@@ -887,12 +895,13 @@ function Banda({ auto }) {
         <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 5 }}>
           {/* "Sigue" = el trabajo pendiente. El sistema solo registra lo terminado, así que
               no puede afirmar que algo esté "en proceso" — solo qué falta hacer. */}
+          {/* Línea de tiempo: ✓ lo que ya quedó · FASE ACTUAL (grande) · → a dónde va */}
           {entregado(auto)
             ? <span style={{ fontFamily: DISPLAY, fontSize: 10.5, letterSpacing: "0.1em", color: T.teal, textTransform: "uppercase" }}>Entregado</span>
             : <>
-                <span style={{ fontSize: 9, letterSpacing: "0.14em", color: T.dim, textTransform: "uppercase" }}>Sigue</span>
-                <span style={{ fontFamily: DISPLAY, fontSize: 10.5, letterSpacing: "0.1em", color: T.gold, textTransform: "uppercase" }}>{tareaQueSigue(auto)}</span>
-                {auto.hito > 0 && <span style={{ fontSize: 9.5, color: T.dim }}>· ✓ {etapaTerminada(auto).n}</span>}
+                {auto.hito > 0 && <span style={{ fontSize: 9.5, color: T.dim }}>✓ {TAREA[etapaTerminada(auto).n] || etapaTerminada(auto).n} ·</span>}
+                <span style={{ fontFamily: DISPLAY, fontSize: 10.5, letterSpacing: "0.1em", color: T.gold, textTransform: "uppercase" }}>{faseActual(auto)}</span>
+                {faseSiguiente(auto) && <span style={{ fontSize: 9.5, color: T.dim }}>· → {faseSiguiente(auto)}</span>}
               </>}
           <span className="tnum" style={{ fontSize: 9.5, color: T.dim, marginLeft: "auto" }}>{auto.hito + 1}/{HITOS.length}</span>
         </div>
@@ -1014,9 +1023,9 @@ function VistaTableta({ autos, setAutos, recargar }) {
                   <div className="tnum" style={{ fontSize: 12, color: T.dim, marginTop: 3 }}>{a.orden} · {bahiaTexto(a.bahia) || (a.tipo === EN_MANO ? "En mano" : "En cola")}{a.tipo === "Garantía" ? "  · GARANTÍA" : ""}{a.tipo === EN_MANO && a.cliente ? " · " + a.cliente : ""}{a.prioridad ? <span style={{ color: "#e07a7a", fontWeight: 700 }}>  · ⚡ URGE</span> : null}</div>
                 </div>
                 <div style={{ textAlign: "right" }}>
-                  <div style={{ fontSize: 9.5, letterSpacing: "0.16em", color: T.dim, textTransform: "uppercase" }}>{esUltimo ? "Estado" : "Sigue"}</div>
-                  <div style={{ fontFamily: DISPLAY, fontSize: 13, color: esUltimo ? T.teal : T.gold, marginTop: 2 }}>{esUltimo ? "Entregado" : tareaQueSigue(a)}</div>
-                  {!esUltimo && a.hito > 0 && <div style={{ fontSize: 10.5, color: T.dim, marginTop: 3 }}>✓ {etapaTerminada(a).n}</div>}
+                  {!esUltimo && a.hito > 0 && <div style={{ fontSize: 10.5, color: T.dim }}>✓ {TAREA[etapaTerminada(a).n] || etapaTerminada(a).n}</div>}
+                  <div style={{ fontFamily: DISPLAY, fontSize: 13, color: esUltimo ? T.teal : T.gold, marginTop: 2 }}>{esUltimo ? "Entregado" : faseActual(a)}</div>
+                  {!esUltimo && faseSiguiente(a) && <div style={{ fontSize: 10.5, color: T.dim, marginTop: 3 }}>→ {faseSiguiente(a)}</div>}
                 </div>
               </div>
 
@@ -1049,7 +1058,7 @@ function VistaTableta({ autos, setAutos, recargar }) {
                 <div style={{ marginTop: 14, paddingTop: 14, borderTop: `1px solid ${T.line}` }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
                     <span style={{ fontSize: 11, letterSpacing: "0.14em", color: T.teal, textTransform: "uppercase" }}>Carril Kevlar</span>
-                    <span style={{ fontSize: 12.5, color: a.kevlarHito >= 3 ? T.teal : T.mut, fontWeight: 600 }}>{kevlarBloqueado ? "Se habilita al terminar el desmontaje" : a.kevlarHito >= 3 ? "Kevlar listo ✓" : "Sigue: " + KEVLAR_PROCESO[a.kevlarHito]}</span>
+                    <span style={{ fontSize: 12.5, color: a.kevlarHito >= 3 ? T.teal : T.mut, fontWeight: 600 }}>{kevlarBloqueado ? "Se habilita al terminar el desmontaje" : a.kevlarHito >= 3 ? "Kevlar listo ✓" : KEVLAR_PROCESO[a.kevlarHito]}</span>
                   </div>
                   <div style={{ display: "flex", gap: 10 }}>
                     <button className="press" onClick={() => mover(a.id, "kevlar", 1)} disabled={a.kevlarHito >= 3 || ocupado || kevlarBloqueado}
@@ -1423,7 +1432,11 @@ function Panel({ autos, setAutos, recargar }) {
                     {HITOS.map((s, i) => <option key={s.n} value={i}>{i + 1}. {s.n} ({s.ow})</option>)}
                   </select>
                 </Campo>
-                <div style={{ fontSize: 11, color: T.dim, marginTop: 5 }}>Sigue: <b style={{ color: T.mut }}>{tareaQueSigue(a)}</b></div>
+                <div style={{ fontSize: 11, color: T.dim, marginTop: 5 }}>
+                  {a.hito > 0 ? `✓ ${TAREA[etapaTerminada(a).n] || etapaTerminada(a).n} · ` : ""}
+                  <b style={{ color: T.gold }}>{faseActual(a)}</b>
+                  {faseSiguiente(a) ? ` · → ${faseSiguiente(a)}` : ""}
+                </div>
               </div>
               <Campo label="Notas"><textarea style={{ ...S.inp, minHeight: 42, resize: "vertical" }} value={a.notas} onChange={(e) => upd(a.id, "notas", e.target.value)} /></Campo>
 
