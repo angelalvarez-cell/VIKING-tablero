@@ -158,9 +158,23 @@ const KEVLAR_SIG = ["Terminé plantillas", "Terminé instalación", "Kevlar list
 const EN_MANO = "En mano";
 const NO_APLICA_EN_MANO = ["Desmontaje", "Montaje"];
 const noAplicaHito = (a, i) => a.tipo === EN_MANO && NO_APLICA_EN_MANO.indexOf(HITOS[i].n) >= 0;
-/* `hito` = ÚLTIMA etapa TERMINADA. Lo que el taller está trabajando ahora es la SIGUIENTE.
-   Estas dos funciones evitan la confusión de mostrar "Desmontaje" cuando ya se terminó. */
+/* `hito` = ÚLTIMA etapa TERMINADA. Con un solo tap por etapa el sistema NO sabe si alguien
+   ya empezó la siguiente o si el coche está esperando — por eso la pantalla dice "SIGUE"
+   (lo que falta hacer), nunca "en proceso", que sería inventar.
+   Y como los nombres de los hitos son resultados ("Material cortado"), aquí se traducen
+   al nombre del TRABAJO para que se lea natural: "Sigue · Corte de material". */
+const TAREA = {
+  "Ingresado": "Ingreso",
+  "Desmontaje": "Desmontaje",
+  "Material cortado": "Corte de material",
+  "Armado de capas": "Armado de capas",
+  "En autoclave": "Autoclave",
+  "Montaje": "Montaje",
+  "Calidad aprobada": "Control de calidad",
+  "Entregado": "Entrega",
+};
 const etapaEnProceso = (a) => (a.hito >= HITOS.length - 1 ? HITOS[HITOS.length - 1] : HITOS[proxHito(a, 1)]);
+const tareaQueSigue = (a) => TAREA[etapaEnProceso(a).n] || etapaEnProceso(a).n;
 const etapaTerminada = (a) => HITOS[a.hito];
 /* Siguiente etapa aplicable en la dirección dada (salta las que no aplican). */
 const proxHito = (a, dir) => {
@@ -871,10 +885,15 @@ function Banda({ auto }) {
 
       <div style={{ marginTop: 10, paddingTop: 8, borderTop: `1px solid ${T.line}` }}>
         <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 5 }}>
-          {/* Se muestra lo que se está trabajando AHORA (la etapa en proceso), no la última
-              terminada — así "Terminé desmontaje" pasa a "Material cortado", que es lo que sigue. */}
-          <span style={{ fontFamily: DISPLAY, fontSize: 10.5, letterSpacing: "0.1em", color: T.gold, textTransform: "uppercase" }}>{etapaEnProceso(auto).n}</span>
-          {entregado(auto) ? null : <span style={{ fontSize: 9.5, color: T.dim }}>en proceso</span>}
+          {/* "Sigue" = el trabajo pendiente. El sistema solo registra lo terminado, así que
+              no puede afirmar que algo esté "en proceso" — solo qué falta hacer. */}
+          {entregado(auto)
+            ? <span style={{ fontFamily: DISPLAY, fontSize: 10.5, letterSpacing: "0.1em", color: T.teal, textTransform: "uppercase" }}>Entregado</span>
+            : <>
+                <span style={{ fontSize: 9, letterSpacing: "0.14em", color: T.dim, textTransform: "uppercase" }}>Sigue</span>
+                <span style={{ fontFamily: DISPLAY, fontSize: 10.5, letterSpacing: "0.1em", color: T.gold, textTransform: "uppercase" }}>{tareaQueSigue(auto)}</span>
+                {auto.hito > 0 && <span style={{ fontSize: 9.5, color: T.dim }}>· ✓ {etapaTerminada(auto).n}</span>}
+              </>}
           <span className="tnum" style={{ fontSize: 9.5, color: T.dim, marginLeft: "auto" }}>{auto.hito + 1}/{HITOS.length}</span>
         </div>
         <div style={{ position: "relative", height: 8, marginBottom: conKevlar ? 8 : 0 }}>
@@ -995,8 +1014,8 @@ function VistaTableta({ autos, setAutos, recargar }) {
                   <div className="tnum" style={{ fontSize: 12, color: T.dim, marginTop: 3 }}>{a.orden} · {bahiaTexto(a.bahia) || (a.tipo === EN_MANO ? "En mano" : "En cola")}{a.tipo === "Garantía" ? "  · GARANTÍA" : ""}{a.tipo === EN_MANO && a.cliente ? " · " + a.cliente : ""}{a.prioridad ? <span style={{ color: "#e07a7a", fontWeight: 700 }}>  · ⚡ URGE</span> : null}</div>
                 </div>
                 <div style={{ textAlign: "right" }}>
-                  <div style={{ fontSize: 9.5, letterSpacing: "0.16em", color: T.dim, textTransform: "uppercase" }}>{esUltimo ? "Estado" : "En proceso"}</div>
-                  <div style={{ fontFamily: DISPLAY, fontSize: 13, color: T.gold, marginTop: 2 }}>{etapaEnProceso(a).n}</div>
+                  <div style={{ fontSize: 9.5, letterSpacing: "0.16em", color: T.dim, textTransform: "uppercase" }}>{esUltimo ? "Estado" : "Sigue"}</div>
+                  <div style={{ fontFamily: DISPLAY, fontSize: 13, color: esUltimo ? T.teal : T.gold, marginTop: 2 }}>{esUltimo ? "Entregado" : tareaQueSigue(a)}</div>
                   {!esUltimo && a.hito > 0 && <div style={{ fontSize: 10.5, color: T.dim, marginTop: 3 }}>✓ {etapaTerminada(a).n}</div>}
                 </div>
               </div>
@@ -1030,7 +1049,7 @@ function VistaTableta({ autos, setAutos, recargar }) {
                 <div style={{ marginTop: 14, paddingTop: 14, borderTop: `1px solid ${T.line}` }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
                     <span style={{ fontSize: 11, letterSpacing: "0.14em", color: T.teal, textTransform: "uppercase" }}>Carril Kevlar</span>
-                    <span style={{ fontSize: 12.5, color: a.kevlarHito >= 3 ? T.teal : T.mut, fontWeight: 600 }}>{kevlarBloqueado ? "Se habilita al terminar el desmontaje" : KEVLAR_PROCESO[a.kevlarHito]}{a.kevlarHito < 3 && !kevlarBloqueado ? " · en proceso" : ""}</span>
+                    <span style={{ fontSize: 12.5, color: a.kevlarHito >= 3 ? T.teal : T.mut, fontWeight: 600 }}>{kevlarBloqueado ? "Se habilita al terminar el desmontaje" : a.kevlarHito >= 3 ? "Kevlar listo ✓" : "Sigue: " + KEVLAR_PROCESO[a.kevlarHito]}</span>
                   </div>
                   <div style={{ display: "flex", gap: 10 }}>
                     <button className="press" onClick={() => mover(a.id, "kevlar", 1)} disabled={a.kevlarHito >= 3 || ocupado || kevlarBloqueado}
@@ -1404,7 +1423,7 @@ function Panel({ autos, setAutos, recargar }) {
                     {HITOS.map((s, i) => <option key={s.n} value={i}>{i + 1}. {s.n} ({s.ow})</option>)}
                   </select>
                 </Campo>
-                <div style={{ fontSize: 11, color: T.dim, marginTop: 5 }}>En proceso ahora: <b style={{ color: T.mut }}>{etapaEnProceso(a).n}</b></div>
+                <div style={{ fontSize: 11, color: T.dim, marginTop: 5 }}>Sigue: <b style={{ color: T.mut }}>{tareaQueSigue(a)}</b></div>
               </div>
               <Campo label="Notas"><textarea style={{ ...S.inp, minHeight: 42, resize: "vertical" }} value={a.notas} onChange={(e) => upd(a.id, "notas", e.target.value)} /></Campo>
 
