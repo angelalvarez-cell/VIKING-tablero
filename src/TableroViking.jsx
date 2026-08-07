@@ -147,14 +147,21 @@ const HITOS = [
   { n: "Entregado", ow: "Vendedor", sig: "Entregado" },
 ];
 const HITO_DESMONTAJE = 1; // el carril de Kevlar se desbloquea al llegar aquí
-const KEVLAR_HITOS = ["Sin empezar", "Plantillas", "Instalando", "Kevlar listo"];
-const KEVLAR_SIG = ["Empecé plantillas", "Instalando", "Kevlar listo"];
+/* Mismo modelo que la vía de vidrios: el valor guardado es lo ÚLTIMO TERMINADO,
+   y en pantalla se muestra lo que está EN PROCESO. Los botones siempre dicen "Terminé". */
+const KEVLAR_HITOS = ["Sin empezar", "Plantillas", "Instalación", "Kevlar listo"]; // último terminado
+const KEVLAR_PROCESO = ["Plantillas", "Instalación", "Revisión final", "Kevlar listo"]; // en proceso
+const KEVLAR_SIG = ["Terminé plantillas", "Terminé instalación", "Kevlar listo"];
 /* "EN MANO": vidrios que un socio comercial trae ya desmontados — Viking solo les hace el
    proceso. No ocupan bahía y NO aplican las etapas de Desmontaje ni Montaje: el flujo las
    salta solo ("Entregado" = el socio recoge sus vidrios). */
 const EN_MANO = "En mano";
 const NO_APLICA_EN_MANO = ["Desmontaje", "Montaje"];
 const noAplicaHito = (a, i) => a.tipo === EN_MANO && NO_APLICA_EN_MANO.indexOf(HITOS[i].n) >= 0;
+/* `hito` = ÚLTIMA etapa TERMINADA. Lo que el taller está trabajando ahora es la SIGUIENTE.
+   Estas dos funciones evitan la confusión de mostrar "Desmontaje" cuando ya se terminó. */
+const etapaEnProceso = (a) => (a.hito >= HITOS.length - 1 ? HITOS[HITOS.length - 1] : HITOS[proxHito(a, 1)]);
+const etapaTerminada = (a) => HITOS[a.hito];
 /* Siguiente etapa aplicable en la dirección dada (salta las que no aplican). */
 const proxHito = (a, dir) => {
   const d = dir || 1;
@@ -594,7 +601,7 @@ function VistaTV({ autos }) {
       if (cola[sig.ow]) cola[sig.ow].push({ auto: a, etapa: sig.n });
     }
     if (a.kevlar.length && a.hito >= HITO_DESMONTAJE && a.kevlarHito < 3) {
-      cola["Kevlar"].push({ auto: a, etapa: KEVLAR_HITOS[Math.min(3, a.kevlarHito + 1)] });
+      cola["Kevlar"].push({ auto: a, etapa: KEVLAR_PROCESO[a.kevlarHito] });
     }
   });
 
@@ -700,7 +707,7 @@ function VistaAgenda({ autos }) {
       const spanK = pasos > 0 ? (hk / (HRS_DIA * 2)) / pasos : 0; // repartido entre los pasos que faltan
       for (let k = a.kevlarHito + 1; k <= 3; k++) {
         const dia = Math.floor(cursorK);
-        if (dia < 5) grid["Kevlar"][dia].push({ auto: a, etapa: KEVLAR_HITOS[k] });
+        if (dia < 5) grid["Kevlar"][dia].push({ auto: a, etapa: KEVLAR_PROCESO[k - 1] }); // trabajo en proceso
         cursorK += Math.max(spanK, 0.4);
       }
     }
@@ -781,7 +788,6 @@ function Leyenda() {
 function Banda({ auto }) {
   const dias = diasPara(auto.entregaFecha);
   const u = URG[urgencia(auto)];
-  const et = HITOS[auto.hito];
   const esG = auto.tipo === "Garantía";
   const pct = (auto.hito / (HITOS.length - 1)) * 100;
   const conKevlar = auto.kevlar.length > 0;
@@ -865,9 +871,10 @@ function Banda({ auto }) {
 
       <div style={{ marginTop: 10, paddingTop: 8, borderTop: `1px solid ${T.line}` }}>
         <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 5 }}>
-          <span style={{ fontFamily: DISPLAY, fontSize: 10.5, letterSpacing: "0.1em", color: T.gold, textTransform: "uppercase" }}>{et.n}</span>
-          {/* Sin responsable en la TV por ahora: solo la etapa. El nombre real de quien
-              hace cada paso queda firmado en la bitácora al registrar el avance. */}
+          {/* Se muestra lo que se está trabajando AHORA (la etapa en proceso), no la última
+              terminada — así "Terminé desmontaje" pasa a "Material cortado", que es lo que sigue. */}
+          <span style={{ fontFamily: DISPLAY, fontSize: 10.5, letterSpacing: "0.1em", color: T.gold, textTransform: "uppercase" }}>{etapaEnProceso(auto).n}</span>
+          {entregado(auto) ? null : <span style={{ fontSize: 9.5, color: T.dim }}>en proceso</span>}
           <span className="tnum" style={{ fontSize: 9.5, color: T.dim, marginLeft: "auto" }}>{auto.hito + 1}/{HITOS.length}</span>
         </div>
         <div style={{ position: "relative", height: 8, marginBottom: conKevlar ? 8 : 0 }}>
@@ -889,7 +896,7 @@ function Banda({ auto }) {
                 return <span key={i} style={{ position: "absolute", top: 0.5, left: `calc(${x}% - 2.5px)`, width: 5, height: 5, borderRadius: "50%", background: i <= auto.kevlarHito ? T.teal : T.line2 }} />;
               })}
             </div>
-            <span style={{ fontSize: 9.5, color: auto.kevlarHito >= 3 ? T.teal : T.mut, flexShrink: 0 }}>{KEVLAR_HITOS[auto.kevlarHito]}</span>
+            <span style={{ fontSize: 9.5, color: auto.kevlarHito >= 3 ? T.teal : T.mut, flexShrink: 0 }}>{KEVLAR_PROCESO[auto.kevlarHito]}</span>
           </div>
         )}
       </div>
@@ -976,7 +983,6 @@ function VistaTableta({ autos, setAutos, recargar }) {
 
       <div style={{ display: "grid", gap: 14, marginTop: 12 }}>
         {visibles.map((a) => {
-          const et = HITOS[a.hito];
           const esUltimo = a.hito >= HITOS.length - 1;
           const conKevlar = a.kevlar.length > 0;
           const bloqueaEntrega = a.hito === HITOS.length - 2 && !kevlarListo(a);
@@ -989,8 +995,9 @@ function VistaTableta({ autos, setAutos, recargar }) {
                   <div className="tnum" style={{ fontSize: 12, color: T.dim, marginTop: 3 }}>{a.orden} · {bahiaTexto(a.bahia) || (a.tipo === EN_MANO ? "En mano" : "En cola")}{a.tipo === "Garantía" ? "  · GARANTÍA" : ""}{a.tipo === EN_MANO && a.cliente ? " · " + a.cliente : ""}{a.prioridad ? <span style={{ color: "#e07a7a", fontWeight: 700 }}>  · ⚡ URGE</span> : null}</div>
                 </div>
                 <div style={{ textAlign: "right" }}>
-                  <div style={{ fontSize: 9.5, letterSpacing: "0.16em", color: T.dim, textTransform: "uppercase" }}>Etapa actual</div>
-                  <div style={{ fontFamily: DISPLAY, fontSize: 13, color: T.gold, marginTop: 2 }}>{et.n}</div>
+                  <div style={{ fontSize: 9.5, letterSpacing: "0.16em", color: T.dim, textTransform: "uppercase" }}>{esUltimo ? "Estado" : "En proceso"}</div>
+                  <div style={{ fontFamily: DISPLAY, fontSize: 13, color: T.gold, marginTop: 2 }}>{etapaEnProceso(a).n}</div>
+                  {!esUltimo && a.hito > 0 && <div style={{ fontSize: 10.5, color: T.dim, marginTop: 3 }}>✓ {etapaTerminada(a).n}</div>}
                 </div>
               </div>
 
@@ -1023,7 +1030,7 @@ function VistaTableta({ autos, setAutos, recargar }) {
                 <div style={{ marginTop: 14, paddingTop: 14, borderTop: `1px solid ${T.line}` }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
                     <span style={{ fontSize: 11, letterSpacing: "0.14em", color: T.teal, textTransform: "uppercase" }}>Carril Kevlar</span>
-                    <span style={{ fontSize: 12.5, color: a.kevlarHito >= 3 ? T.teal : T.mut, fontWeight: 600 }}>{kevlarBloqueado ? "Se habilita al terminar el desmontaje" : KEVLAR_HITOS[a.kevlarHito]}</span>
+                    <span style={{ fontSize: 12.5, color: a.kevlarHito >= 3 ? T.teal : T.mut, fontWeight: 600 }}>{kevlarBloqueado ? "Se habilita al terminar el desmontaje" : KEVLAR_PROCESO[a.kevlarHito]}{a.kevlarHito < 3 && !kevlarBloqueado ? " · en proceso" : ""}</span>
                   </div>
                   <div style={{ display: "flex", gap: 10 }}>
                     <button className="press" onClick={() => mover(a.id, "kevlar", 1)} disabled={a.kevlarHito >= 3 || ocupado || kevlarBloqueado}
@@ -1392,11 +1399,12 @@ function Panel({ autos, setAutos, recargar }) {
                 <div style={{ fontSize: 11, color: T.dim, marginTop: 6 }}>El equipo técnico ({CREW_FIJO.join(", ")}) se asigna solo — nada que capturar.</div>
               </div>
               <div style={{ marginBottom: 12 }}>
-                <Campo label={esG ? "Etapa de arranque / actual" : "Etapa actual"}>
+                <Campo label={esG ? "Última etapa terminada (arranque)" : "Última etapa terminada"}>
                   <select style={S.inp} value={a.hito} onChange={(e) => upd(a.id, "hito", Number(e.target.value))}>
                     {HITOS.map((s, i) => <option key={s.n} value={i}>{i + 1}. {s.n} ({s.ow})</option>)}
                   </select>
                 </Campo>
+                <div style={{ fontSize: 11, color: T.dim, marginTop: 5 }}>En proceso ahora: <b style={{ color: T.mut }}>{etapaEnProceso(a).n}</b></div>
               </div>
               <Campo label="Notas"><textarea style={{ ...S.inp, minHeight: 42, resize: "vertical" }} value={a.notas} onChange={(e) => upd(a.id, "notas", e.target.value)} /></Campo>
 
